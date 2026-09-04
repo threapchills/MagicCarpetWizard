@@ -11,7 +11,7 @@ test('application boots, flies, casts, rolls once per press, pauses, resumes and
     const classes = new Set(), children = new Map();
     return { hidden: false, textContent: '', innerHTML: '', style: { setProperty() {} },
       classList: { add(...xs) { xs.forEach(x => classes.add(x)); }, remove(...xs) { xs.forEach(x => classes.delete(x)); }, toggle(x, on = !classes.has(x)) { on ? classes.add(x) : classes.delete(x); }, contains(x) { return classes.has(x); } },
-      setAttribute() {}, replaceChildren() {}, append() {}, focus() {}, click() { this.onclick?.(); },
+      setAttribute() {}, replaceChildren() {}, append() {}, focus() {}, click() { this.onclick?.(); }, setPointerCapture(id) { this.capturedPointer = id; },
       querySelector(s) { if (!children.has(s)) children.set(s, element()); return children.get(s); },
       addEventListener(type, fn) { this[type] = fn; },
     };
@@ -25,6 +25,8 @@ test('application boots, flies, casts, rolls once per press, pauses, resumes and
   class FakeRenderer {
     constructor() { this.shadowMap = {}; }
     setPixelRatio() {} setSize() {}
+    getDrawingBufferSize(size) { return size.set(1440, 900); }
+    setRenderTarget() {}
     render(scene, camera) { scene.updateMatrixWorld(); camera.updateMatrixWorld(); renders++; }
   }
   install('__TestRenderer', FakeRenderer);
@@ -47,15 +49,22 @@ test('application boots, flies, casts, rolls once per press, pauses, resumes and
     advance(.1); assert.equal(snapshot().state, 'menu');
     elements.get('start').onclick(); dispatch('keydown', { code: 'KeyW' }); advance(2.1); dispatch('keyup', { code: 'KeyW' });
     assert.equal(snapshot().state, 'playing'); assert.ok(snapshot().altitude > 20); assert.ok(snapshot().distance > 45);
+    const highAltitude = snapshot().altitude;
+    dispatch('keydown', { code: 'KeyS' }); advance(.4); dispatch('keyup', { code: 'KeyS' }); assert.ok(snapshot().altitude < highAltitude);
+    dispatch('keydown', { code: 'KeyW' }); advance(.7); dispatch('keyup', { code: 'KeyW' }); assert.ok(snapshot().altitude > highAltitude);
     dispatch('keydown', { code: 'Space' }); advance(3); assert.equal(snapshot().tricks, 1);
     dispatch('keyup', { code: 'Space' });
-    elements.get('world').pointerdown({ button: 0 }); advance(.8); assert.ok(snapshot().shots > 0); dispatch('pointerup');
+    let prevented = false;
+    elements.get('world').pointerdown({ button: 0, pointerId: 7, preventDefault() { prevented = true; } }); advance(.8); assert.ok(snapshot().shots > 0); assert.equal(prevented, true); assert.equal(elements.get('world').capturedPointer, 7); dispatch('pointerup');
+    let selectionBlocked = false; dispatch('selectstart', { preventDefault() { selectionBlocked = true; } }); assert.equal(selectionBlocked, true);
+    assert.equal(elements.get('crosshair').hidden, false);
     elements.get('pause').onclick(); const distance = snapshot().distance; advance(2); assert.equal(snapshot().distance, distance);
     elements.get('resume').onclick(); advance(.5); assert.ok(snapshot().distance > distance);
     elements.get('help-button').onclick(); elements.get('help-button').onclick(); advance(.5); assert.equal(snapshot().state, 'paused');
     elements.get('close-help').onclick(); assert.equal(snapshot().state, 'playing');
     // Several streamed chunks at different presentation rates; flight remains active and bounded.
-    advance(9, 30); advance(9, 144); assert.ok(['playing', 'ended'].includes(snapshot().state)); assert.ok(snapshot().chunks <= 11); assert.ok(snapshot().particles <= 240);
+    advance(9, 30); advance(9, 144); if (snapshot().state === 'dying') advance(1);
+    assert.ok(['playing', 'ended'].includes(snapshot().state)); assert.ok(snapshot().chunks <= 11); assert.ok(snapshot().particles <= 240);
     if (snapshot().state === 'ended') { assert.equal(elements.get('end-screen').hidden, false); elements.get('restart').onclick(); }
     dispatch('blur'); assert.equal(snapshot().state, 'paused');
     elements.get('pause-restart').onclick(); assert.equal(snapshot().state, 'playing'); assert.equal(snapshot().distance, 0); assert.equal(snapshot().hp, 3); assert.equal(snapshot().shots, 0);

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RADIUS, CHUNK, ZONES, random } from './game.js';
 
-const gradient = new THREE.DataTexture(new Uint8Array([95, 166, 220, 255]), 4, 1, THREE.RedFormat);
+const gradient = new THREE.DataTexture(new Uint8Array([45, 135, 240]), 3, 1, THREE.RedFormat);
 gradient.minFilter = gradient.magFilter = THREE.NearestFilter; gradient.needsUpdate = true;
 const materials = new Map();
 export function mat(color, glow = false) {

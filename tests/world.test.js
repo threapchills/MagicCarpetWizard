@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { generateChunk, RADIUS } from '../src/game.js';
 import { createChunkVisual, createCarpet, createEnemy, createPickup, createRing, placeOnWorld, disposeChunk } from '../src/world.js';
+import { BloodRibbons } from '../src/effects.js';
 
 test('every zone creates finite merged geometry without mutating collision shapes', () => {
   for (let zone = 0; zone < 7; zone++) {
@@ -22,4 +23,13 @@ test('all interactive models construct successfully', () => {
   for (const object of [createCarpet().root, createEnemy(), createRing(3.8), ...['gold', 'fire', 'frost', 'storm', 'echo', 'magnet', 'ward'].map(createPickup)]) {
     let meshes = 0; object.traverse(m => { if (m.isMesh) meshes++; }); assert.ok(meshes > 0);
   }
+});
+
+test('red ribbon bursts stay bounded, produce finite geometry, and clean up', () => {
+  const scene = new THREE.Scene(), effect = new BloodRibbons(scene);
+  for (let i = 0; i < 10; i++) effect.burst(2, 10, 90, 26);
+  assert.equal(effect.ribbons.length, 72);
+  for (let i = 0; i < 10; i++) effect.update(1 / 60, 80 + i);
+  for (const r of effect.ribbons) for (const value of r.positions) assert.ok(Number.isFinite(value));
+  effect.update(3, 100); assert.equal(effect.ribbons.length, 0); assert.equal(scene.children.length, 0);
 });

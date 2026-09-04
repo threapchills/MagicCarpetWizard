@@ -4,6 +4,8 @@ import * as THREE from 'three';
 import { CHUNK, RADIUS, ZONES, ZONE_LENGTH, SPELLS, clamp, lerp, random, createRun, updateRun, generateChunk, zoneAt, multiplier, award, collectSpell, damage, intersectsObstacle, nearObstacle, spellDamage, segmentHitsSphere } from './game.js';
 import { mat, mesh, gem, orb, createChunkVisual, placeOnWorld, createCarpet, createPickup, createEnemy, createRing, createSky, disposeChunk } from './world.js';
 import { Soundscape } from './audio.js';
+import { InkRenderer } from './ink.js';
+import { BloodRibbons } from './effects.js';
 
 const $ = id => document.getElementById(id);
 const canvas = $('world');
@@ -12,22 +14,27 @@ try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPrefere
 catch { $('loading').innerHTML = '<p>This carpet needs WebGL 2 to fly.</p><p>Please enable hardware acceleration or try a current Chrome, Edge, Firefox or Safari browser.</p>'; throw new Error('WebGL renderer unavailable'); }
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.65)); renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.28;
+renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.NoToneMapping;
 const scene = new THREE.Scene(); scene.fog = new THREE.Fog('#c7d8c5', 110, 295);
 const camera = new THREE.PerspectiveCamera(49, innerWidth / innerHeight, .2, 1100);
-const ambient = new THREE.HemisphereLight('#e8f0d6', '#8d6978', 2.5); scene.add(ambient);
-const sunlight = new THREE.DirectionalLight('#ffe4bd', 3); sunlight.position.set(-45, 80, 25); sunlight.castShadow = true;
+const ink = new InkRenderer(renderer, camera);
+const ambient = new THREE.HemisphereLight('#f7dba6', '#655581', 1); scene.add(ambient);
+const sunlight = new THREE.DirectionalLight('#fff0c7', 1.9); sunlight.position.set(-60, 65, 25); sunlight.castShadow = true;
 sunlight.shadow.mapSize.set(2048, 2048); Object.assign(sunlight.shadow.camera, { left: -58, right: 58, top: 48, bottom: -55, near: 1, far: 190 });
 sunlight.shadow.bias = -.0007; sunlight.shadow.normalBias = .3; sunlight.target.position.set(0, 0, -28); scene.add(sunlight, sunlight.target);
 const planetMaterial = mat('#dca773');
 const planet = new THREE.Mesh(new THREE.SphereGeometry(RADIUS, 96, 64), planetMaterial); planet.position.y = -RADIUS - 1; planet.receiveShadow = true; scene.add(planet);
 const sky = createSky(scene);
 const carpet = createCarpet(); scene.add(carpet.root, carpet.shadow);
+const blood = new BloodRibbons(scene);
 const chunks = new Map(), bullets = [], particles = [], enemyShots = [];
 const sound = new Soundscape();
 let state = 'menu', run = createRun(), globalTime = 0, lastTime = performance.now(), uiClock = 0;
 let menuDistance = 90, lastZone = 0, bannerTime = 0, toastTime = 0, flashTime = 0, shootHeld = false, helpWasRunning = false;
 let notifyPriority = 0, hitTime = 0, trailClock = 0, particleClock = 0, accumulator = 0;
+let deathTime = 0;
+let audioEnvironment = {};
+let windowFocused = true;
 const STEP = 1 / 90;
 let aim = new THREE.Vector2(0, .03), best = 0, highScore = 0;
 const keys = new Set();
@@ -62,6 +69,7 @@ function updateSpellTray() {
   }
 }
 function clearWorld() {
+  blood.clear();
   for (const c of chunks.values()) { scene.remove(c.visual); disposeChunk(c.visual); for (const item of [...c.pickups, ...c.enemies, ...c.rings]) scene.remove(item.visual); }
   chunks.clear();
   for (const array of [bullets, enemyShots]) { array.forEach(p => scene.remove(p.visual)); array.length = 0; }
@@ -80,6 +88,8 @@ function ensureChunks(distance, seed) {
   }
 }
 function begin() {
+  windowFocused = true;
+  sound.setPaused(false);
   clearWorld(); run = createRun(Math.floor(Math.random() * 1000000)); state = 'playing'; lastZone = 0;
   keys.clear(); shootHeld = false; bannerTime = toastTime = flashTime = hitTime = accumulator = trailClock = particleClock = 0;
   $('damage-flash').style.opacity = '0'; $('crosshair').classList.remove('hit', 'locked');
@@ -89,8 +99,8 @@ function begin() {
   notify('S to skim low · W to climb · hold click to cast', 5); canvas.focus();
   if (sound.ctx && sound.enabled) sound.ctx.resume();
 }
-function pauseGame() { if (state !== 'playing') return; state = 'paused'; accumulator = 0; keys.clear(); shootHeld = false; $('pause-screen').hidden = false; $('crosshair').hidden = true; document.body.classList.remove('playing', 'boosting'); $('resume').focus(); }
-function resume() { if (state !== 'paused') return; state = 'playing'; accumulator = 0; $('pause-screen').hidden = true; $('crosshair').hidden = false; document.body.classList.add('playing'); }
+function pauseGame() { if (state !== 'playing') return; sound.setPaused(true); state = 'paused'; accumulator = 0; keys.clear(); shootHeld = false; $('pause-screen').hidden = false; $('crosshair').hidden = true; document.body.classList.remove('playing', 'boosting'); $('resume').focus(); }
+function resume() { if (state !== 'paused') return; sound.setPaused(false); state = 'playing'; accumulator = 0; $('pause-screen').hidden = true; $('crosshair').hidden = false; document.body.classList.add('playing'); }
 function finish() {
   state = 'ended'; shootHeld = false; keys.clear(); $('end-screen').hidden = false; $('hud').hidden = true; $('pause').hidden = true; $('crosshair').hidden = true; document.body.classList.remove('playing', 'boosting');
   $('end-distance').textContent = Math.floor(run.distance).toLocaleString(); $('end-score').textContent = Math.floor(run.score).toLocaleString(); $('end-combo').textContent = `×${run.bestChain}`;
@@ -109,7 +119,7 @@ function openHelp() { if (!$('help-screen').hidden) return; helpWasRunning = sta
 function closeHelp() { $('help-screen').hidden = true; if (helpWasRunning) resume(); else if (state === 'paused') $('pause-screen').hidden = false; }
 $('start').onclick = begin; $('restart').onclick = begin; $('pause-restart').onclick = begin; $('resume').onclick = resume; $('pause').onclick = pauseGame; $('back-menu').onclick = menu;
 $('help-button').onclick = openHelp; $('close-help').onclick = closeHelp; $('guide-fly').onclick = closeHelp;
-$('sound').onclick = async () => { const on = await sound.toggle(); $('sound').classList.toggle('sound-on', on); $('sound').setAttribute('aria-label', `Turn sound ${on ? 'off' : 'on'}`); };
+$('sound').onclick = async () => { const on = await sound.toggle(); $('sound').classList.toggle('sound-on', on); $('sound').setAttribute('aria-label', `Turn ambience and effects ${on ? 'off' : 'on'}`); };
 document.addEventListener('keydown', e => {
   if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
   if (!e.repeat) {
@@ -121,11 +131,22 @@ document.addEventListener('keydown', e => {
   keys.add(e.code);
 });
 document.addEventListener('keyup', e => keys.delete(e.code));
-window.addEventListener('blur', pauseGame); document.addEventListener('visibilitychange', () => { if (document.hidden) pauseGame(); });
-canvas.addEventListener('pointermove', e => { aim.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1); $('crosshair').style.left = `${e.clientX}px`; $('crosshair').style.top = `${e.clientY}px`; });
-canvas.addEventListener('pointerdown', e => { if (e.button === 0 && state === 'playing') shootHeld = true; });
+window.addEventListener('blur', () => { windowFocused = false; sound.setPaused(true); pauseGame(); });
+window.addEventListener('focus', () => { windowFocused = true; sound.setPaused(state === 'paused' || !$('help-screen').hidden); });
+document.addEventListener('visibilitychange', () => { sound.setPaused(document.hidden || state === 'paused'); if (document.hidden) pauseGame(); });
+window.addEventListener('pointermove', e => { aim.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1); $('crosshair').style.left = `${e.clientX}px`; $('crosshair').style.top = `${e.clientY}px`; });
+canvas.addEventListener('pointerdown', e => {
+  if (e.button === 0 && state === 'playing') {
+    e.preventDefault(); shootHeld = true;
+    if (canvas.setPointerCapture) canvas.setPointerCapture(e.pointerId);
+  }
+});
 window.addEventListener('pointerup', () => shootHeld = false); canvas.addEventListener('contextmenu', e => e.preventDefault());
-window.addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+window.addEventListener('pointercancel', () => shootHeld = false);
+canvas.addEventListener('lostpointercapture', () => shootHeld = false);
+document.addEventListener('selectstart', e => { if (state === 'playing') e.preventDefault(); });
+document.addEventListener('dragstart', e => { if (state === 'playing') e.preventDefault(); });
+window.addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); ink.resize(); });
 canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); pauseGame(); $('loading').hidden = false; $('loading').style.opacity = '1'; $('loading').innerHTML = '<p>The sky needs a moment.</p><p>Reload this page to restore the graphics.</p>'; });
 
 function particleBurst(x, y, s, color, count = 12) {
@@ -142,6 +163,7 @@ function defeat(e) {
   if (!e.active) return;
   e.active = false; e.visual.visible = false; run.kills++; award(run, 160, 12); sound.kill();
   particleBurst(e.x, e.y, e.s, '#d9b8ff', 19); notify(`Spirit banished · +${160 * multiplier(run)}`, 1.1);
+  blood.burst(e.x, e.y, e.s, 26);
 }
 function strike(e, chained = false) {
   if (!e.active) return;
@@ -150,6 +172,7 @@ function strike(e, chained = false) {
   hitTime = .13; $('crosshair').classList.add('hit');
   if (run.spells.frost) e.frozen = 1.4 + run.spells.frost * .6;
   particleBurst(e.x, e.y, e.s, frozen ? '#bdf3ec' : '#ffc382', 5);
+  if (e.hp > 0) blood.burst(e.x, e.y, e.s, 3);
   if (e.hp <= 0) defeat(e);
   if (!chained && run.spells.storm) {
     let jumps = run.spells.storm;
@@ -273,6 +296,7 @@ function updateAtmosphere(dt, distance) {
   const weatherCycle = Math.floor((state === 'menu' ? 0 : run.time) / 38);
   const weather = state === 'menu' ? 0 : [0, 1, 0, 2, 0, 1, 2][(weatherCycle + zoneAt(distance)) % 7];
   const sand = weather === 2 && ['desert', 'ancient', 'canyon'].includes(z.type), raining = weather === 2 && !sand;
+  audioEnvironment = { zone: z.type, altitude: state === 'menu' ? 8 : run.altitude, speed: run.speed, night, rain: raining, sand, boost: run.boost };
   const skyTop = new THREE.Color(z.sky).lerp(new THREE.Color('#407677'), .32).lerp(new THREE.Color('#202d55'), night);
   const horizon = new THREE.Color(z.fog).lerp(new THREE.Color('#eba777'), (1 - Math.abs(daylight * 2 - 1)) * .26).lerp(new THREE.Color('#646086'), night);
   if (sand) horizon.lerp(new THREE.Color('#d3a773'), .55);
@@ -280,7 +304,7 @@ function updateAtmosphere(dt, distance) {
   sky.uniforms.top.value.lerp(skyTop, dt * .5); sky.uniforms.bottom.value.lerp(horizon, dt * .5); scene.fog.color.lerp(horizon, dt * .5);
   scene.fog.far = lerp(scene.fog.far, sand ? 165 : raining ? 215 : 295, dt * .3);
   planetMaterial.color.lerp(new THREE.Color(z.ground), dt * .5);
-  ambient.intensity = lerp(ambient.intensity, 2.4 - night * .75, dt); sunlight.intensity = lerp(sunlight.intensity, 2.7 - night * 1.65, dt);
+  ambient.intensity = lerp(ambient.intensity, 1.05 - night * .28, dt); sunlight.intensity = lerp(sunlight.intensity, 1.85 - night * .85, dt);
   sunlight.color.lerp(new THREE.Color(night > .5 ? '#b5c9fa' : '#ffe1b1'), dt * .5);
   sky.sun.visible = night < .7; sky.moon.visible = night > .2; sky.stars.material.opacity = night * .8;
   sky.sun.position.y = 35 + daylight * 115; sky.clouds.rotation.y += dt * (weather ? .005 : .0015);
@@ -338,9 +362,9 @@ function updateTrails(dt, distance, playing) {
 }
 function updateCamera(dt) {
   if (state === 'menu') { goalPosition.set(11 + Math.sin(globalTime * .08) * 3, 26, 48); goalLook.set(-19, 1, -35); }
-  else { goalPosition.set(run.x * .48 + 3, 12 + run.altitude * .62, run.boost ? 27 : 24); goalLook.set(run.x * .65, 2 + run.altitude * .45, -32); }
+  else { goalPosition.set(run.x * .58 + 1.5, 8.5 + run.altitude * .72, run.boost ? 22 : 21); goalLook.set(run.x * .72, 1.5 + run.altitude * .60, -32); }
   camera.position.lerp(goalPosition, 1 - Math.exp(-dt * 4)); currentLook.lerp(goalLook, 1 - Math.exp(-dt * 4)); camera.lookAt(currentLook);
-  camera.fov = lerp(camera.fov, state === 'menu' ? 49 : run.boost ? 64 : 54, dt * 2); camera.updateProjectionMatrix();
+  camera.fov = lerp(camera.fov, state === 'menu' ? 49 : run.boost ? 72 : 55 + clamp((run.speed - 25) * .35, 0, 9), dt * 2); camera.updateProjectionMatrix();
 }
 function updateUI(weather) {
   $('weather').textContent = weather; $('zone-name').textContent = ZONES[zoneAt(state === 'menu' ? menuDistance : run.distance)].name;
@@ -349,7 +373,7 @@ function updateUI(weather) {
   $('hearts').textContent = Array.from({ length: 3 }, (_, i) => i < run.hp ? '♥' : '♡').join(' '); $('hearts').setAttribute('aria-label', `${run.hp} health`);
   $('combo').textContent = `×${multiplier(run)}`; $('combo-label').textContent = run.chain ? `${run.chain} MOMENTS OF MAGIC` : 'FIND YOUR FLOW'; $('combo-bar').style.width = `${run.chainTimer / 5 * 100}%`;
   $('power-bar').style.width = `${run.power}%`; $('power-value').textContent = `${Math.floor(run.power)}%`; $('power-hint').textContent = run.boost ? 'Skyfire flowing · keep the chain alive' : run.power >= 25 ? 'Hold SHIFT to ride the skyfire' : 'Skim low to gather power';
-  $('speed-value').textContent = Math.round(run.speed * 3.6); $('altitude').textContent = `${run.altitude.toFixed(1)} m above ground`;
+  $('speed-value').textContent = Math.round(run.speed * 3.6); $('altitude').textContent = `${run.vy > 1 ? '↑ ' : run.vy < -1 ? '↓ ' : ''}${run.altitude.toFixed(1)} m above ground`;
   $('flight-mode').textContent = run.boost ? '✦ SKYFIRE ASCENDANT' : run.altitude < 3.5 ? '✦ GROUND EFFECT' : run.roll ? '✧ SILK SPIRAL' : 'RIDE THE WIND';
   const zone = zoneAt(run.distance), progress = (run.distance % ZONE_LENGTH) / ZONE_LENGTH;
   $('zone-progress').style.width = `${progress * 100}%`;
@@ -388,15 +412,17 @@ function frame(now) {
   // Refresh placement after streaming even if this display frame had no simulation step.
   updateEntities(0, distance, false); updateParticles(worldDt, distance); updateCarpet(worldDt, playing); updateTrails(worldDt, distance, playing); updateCamera(frozen ? 0 : dt);
   const weather = updateAtmosphere(worldDt, distance);
-  if (!frozen) sound.update(dt, playing, run.boost);
+  blood.update(worldDt, distance);
+  sound.update(dt, { ...audioEnvironment, running: playing, paused: frozen || document.hidden || !windowFocused });
   if (toastTime > 0) { toastTime -= worldDt; if (toastTime <= 0) $('toast').classList.remove('show'); }
   if (bannerTime > 0) { bannerTime -= worldDt; if (bannerTime <= 0) $('zone-banner').classList.remove('show'); }
   if (flashTime > 0) { flashTime -= dt; if (flashTime <= 0) $('damage-flash').style.opacity = '0'; }
   if (hitTime > 0) { hitTime -= worldDt; if (hitTime <= 0) $('crosshair').classList.remove('hit'); }
   uiClock += dt; if (uiClock >= .1) { updateUI(weather); uiClock = 0; }
-  renderer.render(scene, camera);
+  ink.render(scene, camera);
   if (firstFrame) { firstFrame = false; $('loading').style.opacity = '0'; setTimeout(() => $('loading').hidden = true, 650); }
-  if (playing && run.ended) finish();
+  if (playing && run.ended) { state = 'dying'; deathTime = .85; shootHeld = false; $('crosshair').hidden = true; blood.burst(run.x, run.altitude + 1, run.distance, 46); }
+  if (state === 'dying') { deathTime -= worldDt; carpet.body.rotation.z += (1 - deathTime / .85) * .6; if (deathTime <= 0) finish(); }
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

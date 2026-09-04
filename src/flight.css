@@ -13,5 +13,19 @@ body.boosting .power-track i{background:linear-gradient(90deg,#75cbdb,#c6fff2);b
 body.boosting #flight-mode{color:#b6fff1}
 #world:focus-visible{outline:none}
 #hud{pointer-events:none}.spell-tray{pointer-events:auto}
+/* A dark outer contour and a bright core stay readable against both sand and sky. */
+#crosshair{z-index:10;width:34px;height:34px;border:2px solid #fff;outline:2px solid #131a26;box-shadow:0 0 0 4px #0b132577,0 0 14px 3px #ffffff9c;transition:box-shadow .1s,border-color .1s;isolation:isolate}
+#crosshair::before,#crosshair::after{content:"";position:absolute;background:#fff;border:1px solid #111827;box-shadow:0 0 4px #0009}
+#crosshair::before{width:46px;height:4px;left:-8px;top:13px}
+#crosshair::after{width:4px;height:46px;left:13px;top:-8px}
+#crosshair i{z-index:2;width:8px;height:8px;left:11px;top:11px;background:#fff;border:2px solid #111827;box-shadow:0 0 6px #fff;border-radius:50%}
+#crosshair b{display:none}
+#crosshair.locked{border-color:#ffe084;outline-color:#131a26;box-shadow:0 0 0 4px #14132399,0 0 20px 6px #ffc95cc4}
+#crosshair.hit{width:34px;height:34px;border-color:#ff775e;box-shadow:0 0 0 4px #14132399,0 0 22px 7px #ff876dbb}
+#crosshair.hit i{left:11px;top:11px;background:#ff9e7d}
+body.playing,body.playing *{-webkit-user-select:none;user-select:none;-webkit-user-drag:none}
+#world{touch-action:none}
+body.playing .topbar{pointer-events:none}body.playing .top-actions{pointer-events:auto}
+body.playing .spell-tray{pointer-events:none}
 @media(max-width:800px){.route-progress{top:148px;width:180px}.run-stats{top:196px}.chain{top:200px}#roll-ready{bottom:146px}.route-progress>span{font-size:9px}}
 @media(prefers-reduced-motion:reduce){.loading-star{animation:none}#crosshair,.route-progress i{transition:none}body.boosting #vignette{box-shadow:none}}
