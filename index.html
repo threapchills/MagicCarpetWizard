@@ -9,7 +9,7 @@
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%231b3140'/%3E%3Cpath d='M10 39 27 17 54 25 37 48Z' fill='%23d98f65' stroke='%23f5d38b' stroke-width='3'/%3E%3Cpath d='m24 35 8-9 10 5-7 8Z' fill='%2349aaa5'/%3E%3C/svg%3E" />
   </head>
   <body>
-    <canvas id="world" aria-label="3D magic carpet flying game"></canvas>
+    <canvas id="world" tabindex="0" aria-label="3D magic carpet flying game"></canvas>
     <div id="vignette"></div>
     <header class="topbar">
       <a class="wordmark" href="./" aria-label="Magic Carpet Wizard home"><span class="brand-seal">✦</span><span>MAGIC CARPET<br><strong>WIZARD</strong></span></a>
@@ -26,11 +26,13 @@
         <div class="best-line"><span>YOUR FARTHEST HORIZON</span><strong id="menu-best">—</strong></div>
       </section>
       <section id="hud" hidden aria-label="Flight dashboard">
+        <div class="route-progress"><div><i id="zone-progress"></i></div><span id="next-zone">720 m to The Sultan’s Gardens</span></div>
         <div class="run-stats"><span class="tiny-label">JOURNEY</span><div><strong id="distance">0</strong><span>m</span></div><p><span id="score">0</span> <span class="tiny-label">POINTS</span></p><div id="hearts" aria-label="3 health">♥ ♥ ♥</div></div>
         <div class="chain"><span id="combo-label">FIND YOUR FLOW</span><strong id="combo">×1</strong><div class="chain-track"><i id="combo-bar"></i></div></div>
         <div class="flight-meter"><div class="meter-heading"><span>✦ SKYFIRE</span><span id="power-value">25%</span></div><div class="power-track"><i id="power-bar"></i></div><p id="power-hint">Skim low to gather power</p></div>
         <div class="speed"><strong id="speed-value">0</strong><span>KM/H</span><div id="altitude">2.0 m above ground</div><em id="flight-mode">ROOFTOP DREAMING</em></div>
         <div class="spell-tray" id="spell-tray"></div>
+        <div id="roll-ready">SPACE · ROLL READY</div>
         <div class="bottom-hints"><span><kbd>W</kbd><kbd>S</kbd> altitude</span><span><kbd>A</kbd><kbd>D</kbd> steer</span><span><kbd>SPACE</kbd> roll</span><span><kbd>SHIFT</kbd> skyfire</span><span><kbd>CLICK</kbd> cast</span></div>
       </section>
       <div id="zone-banner" class="zone-banner"><span>BEYOND THE HORIZON</span><strong></strong><em></em></div>

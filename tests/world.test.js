@@ -6,7 +6,8 @@ import { createChunkVisual, createCarpet, createEnemy, createPickup, createRing,
 
 test('every zone creates finite merged geometry without mutating collision shapes', () => {
   for (let zone = 0; zone < 7; zone++) {
-    const chunk = generateChunk(zone * 20 + 5, 671), expected = structuredClone(chunk.obstacles), visual = createChunkVisual(chunk, 671);
+    const index = zone * 20 + (3 - zone * 20 % 6 + 6) % 6;
+    const chunk = generateChunk(index, 671), expected = structuredClone(chunk.obstacles), visual = createChunkVisual(chunk, 671);
     assert.deepEqual(chunk.obstacles, expected);
     assert.ok(visual.children.length > 0 && visual.children.length < 40);
     visual.traverse(m => { if (m.isMesh) { assert.ok(m.geometry.attributes.position.count > 0); for (const n of m.geometry.attributes.position.array) assert.ok(Number.isFinite(n)); m.geometry.computeBoundingSphere(); assert.ok(Number.isFinite(m.geometry.boundingSphere.radius)); } });

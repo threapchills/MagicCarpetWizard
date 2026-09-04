@@ -20,7 +20,7 @@ const ring = new THREE.TorusGeometry(1, .08, 5, 32);
 const arch = new THREE.Shape(); arch.moveTo(-.5, 0); arch.lineTo(-.5, .62); arch.quadraticCurveTo(-.48, .84, 0, 1); arch.quadraticCurveTo(.48, .84, .5, .62); arch.lineTo(.5, 0);
 const archGeo = new THREE.ShapeGeometry(arch, 5);
 export function mesh(geometry, color, parent, position = [0, 0, 0], scale = [1, 1, 1], rotation = [0, 0, 0], glow = false) {
-  const m = new THREE.Mesh(geometry, mat(color, glow)); m.position.set(...position); m.scale.set(...scale); m.rotation.set(...rotation); m.castShadow = true; m.receiveShadow = true; parent.add(m); return m;
+  const m = new THREE.Mesh(geometry, mat(color, glow)); m.position.set(...position); m.scale.set(...scale); m.rotation.set(...rotation); m.castShadow = !glow; m.receiveShadow = !glow; parent.add(m); return m;
 }
 export function block(parent, color, x, y, z, w, h, d, ry = 0) { return mesh(box, color, parent, [x, y, z], [w, h, d], [0, ry, 0]); }
 function mergeGroup(group) {
@@ -99,6 +99,39 @@ function fountain(parent, x, z, scale = 1) {
   mesh(cone, '#a5e0d5', parent, [x, y + 3.3, z], [.7 * scale, 1.3, .7 * scale]);
 }
 
+function landmark(parent, type, side, rng) {
+  const x = side * 58, z = -18, ground = -x * x / (2 * RADIUS);
+  if (type === 'city' || type === 'palace') {
+    building(parent, x, z, 21, 21, 20, rng, true);
+    for (const offset of [-15, 15]) {
+      building(parent, x + offset, z + 3, 9, 13, 12, rng, true);
+      minaret(parent, x + offset * 1.2, z + 10, 36, rng);
+    }
+    // Three-tier stairs and an arcaded forecourt below the great dome.
+    for (let i = 0; i < 3; i++) block(parent, '#efd1a0', x, ground + .3 + i * .45, z + 16 - i, 28 - i * 2, .6, 8);
+    for (let i = -2; i <= 2; i++) windowOn(parent, x + i * 3.5, ground + 5, z + 10.04, 2, 5, '#36787f');
+  } else if (type === 'canyon') {
+    for (const offset of [-10, 10]) rock(parent, x + offset, z, 7, 28, '#ba7f68', rng);
+    mesh(orb, '#c88e70', parent, [x, ground + 24, z], [19, 5, 5]);
+  } else if (type === 'ancient') {
+    for (const offset of [-9, 9]) ruin(parent, x + offset, z, 23);
+    mesh(ring, '#e9b992', parent, [x, ground + 22, z], [8, 8, 8], [0, 0, 0]);
+    mesh(gem, '#9bd8d0', parent, [x, ground + 22, z], [2.4, 4, 2.4], [0, .5, .15], true);
+    for (let i = 0; i < 4; i++) block(parent, '#d7af97', x, ground + i * 1.1, z, 19 - i * 3, 1.2, 19 - i * 3);
+  } else if (type === 'desert') {
+    for (let i = 0; i < 4; i++) mesh(cone, i % 2 ? '#aa6274' : '#e4be87', parent, [x + (i - 1.5) * 8, ground + 4, z + Math.sin(i) * 6], [6, 8, 6]);
+    palm(parent, x - 18, z, 14, rng); palm(parent, x + 16, z + 8, 11, rng);
+    fountain(parent, x, z + 15, 2);
+  } else if (type === 'river') {
+    building(parent, x, z, 16, 16, 15, rng, true);
+    for (let i = 0; i < 5; i++) ruin(parent, side * (31 + i * 8), z + 10, 7);
+  } else {
+    const tower = building(parent, x, z, 8, 15, 8, rng);
+    for (let i = 0; i < 4; i++) { const a = i * Math.PI / 2 + .6; mesh(box, '#f5dcaa', tower, [Math.cos(a) * 4, 12 + Math.sin(a) * 4, 4.5], [7, .75, .15], [0, 0, a]); }
+    for (const offset of [-14, 14]) building(parent, x + offset, z, 8, 5, 9, rng);
+  }
+}
+
 export function createChunkVisual(data, seed) {
   const rng = random(seed + data.index * 7919), g = new THREE.Group(), type = ZONES[data.zone].type;
   // Broad ground segments are curved across the planet's latitude.
@@ -157,6 +190,7 @@ export function createChunkVisual(data, seed) {
       block(g, '#d6aa84', o.x, base + o.height - .3, z, o.width + .1, .6, o.depth + .1);
     }
   }
+  if (data.index % 6 === 3) landmark(g, type, Math.floor(data.index / 6) % 2 ? -1 : 1, rng);
   // Gold roadside lanterns make the flight corridor legible at night.
   for (const side of [-1, 1]) {
     block(g, '#8f7967', side * 23, 1.5 - 23 * 23 / (2 * RADIUS), -8, .13, 3, .13);
@@ -217,6 +251,11 @@ export function createEnemy() {
   mesh(orb, '#927ca4', g, [0, .8, 0], [.59, .55, .53]);
   for (const side of [-1, 1]) { mesh(orb, '#ffcd85', g, [side * .23, .82, .48], [.13, .09, .08], [0, 0, side * -.2], true); mesh(cone, '#ddae7f', g, [side * .4, 1.37, 0], [.18, .7, .18], [0, 0, side * -.3]); mesh(orb, '#7d7098', g, [side * 1.1, .2, 0], [.6, .2, .34], [0, 0, side * -.3]); }
   mesh(ring, '#b6a1be', g, [0, -.5, 0], [1.05, 1.05, 1.05], [Math.PI / 2, 0, 0]);
+  const healthBack = block(g, '#413b59', 0, 2.05, 0, 1.9, .13, .1);
+  const health = block(g, '#f2bf83', 0, 2.05, .065, 1.8, .09, .03);
+  const charge = mesh(ring, '#ffb2cd', g, [0, .2, .7], [1.5, 1.5, 1.5], [0, 0, 0], true); charge.visible = false;
+  const frost = mesh(ring, '#b8f2f2', g, [0, .1, 0], [1.55, 1.55, 1.55], [.5, 0, 0], true); frost.visible = false;
+  g.userData = { health, healthBack, charge, frost };
   return g;
 }
 export function createRing(radius) {
@@ -241,7 +280,16 @@ export function createSky(scene) {
     for (let j = 0; j < 4; j++) mesh(orb, '#eadfc9', g, [j * 5 - 7, Math.sin(j) * 2, 0], [7 + rng() * 4, 2 + rng() * 2, 4]);
     clouds.add(g);
   }
-  scene.add(clouds); return { uniforms, sun, moon, stars, clouds };
+  scene.add(clouds);
+  const lanterns = new THREE.Group();
+  for (let i = 0; i < 14; i++) {
+    const g = new THREE.Group(); g.position.set((rng() - .5) * 340, 45 + rng() * 80, -70 - rng() * 200); g.userData.baseY = g.position.y;
+    mesh(orb, i % 2 ? '#d48b86' : '#e8bb7b', g, [0, 0, 0], [1.8, 2.9, 1.8]);
+    mesh(cylinder, '#745c65', g, [0, -2.5, 0], [.7, .2, .7]);
+    mesh(gem, '#ffe2a1', g, [0, -2.3, 0], [.3, .65, .3], [0, 0, 0], true);
+    lanterns.add(g);
+  }
+  scene.add(lanterns); return { uniforms, sun, moon, stars, clouds, lanterns };
 }
 export function disposeChunk(group) { group.traverse(m => { if (m.isMesh) m.geometry.dispose(); }); }
 export { gem, orb, ring };

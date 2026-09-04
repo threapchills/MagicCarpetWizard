@@ -1,0 +1,17 @@
+.route-progress{position:fixed;top:110px;left:50%;transform:translateX(-50%);width:205px;text-align:center;pointer-events:none}
+.route-progress>div{height:2px;background:#ffefc62b;overflow:hidden;margin-bottom:8px}
+.route-progress i{display:block;height:100%;width:0;background:#f4d592;transition:width .15s}
+.route-progress>span{font-size:10px;letter-spacing:.7px;color:#fff1d5b5;text-shadow:0 1px 5px #183641}
+#roll-ready{position:fixed;left:50%;bottom:73px;transform:translateX(-50%);font-size:10px;letter-spacing:1.7px;color:#f1d59ec9;white-space:nowrap}
+#crosshair{transition:border-color .12s,box-shadow .12s,width .12s,height .12s}
+#crosshair.locked{border-color:#ffc776;box-shadow:0 0 13px #ffd28355}
+#crosshair.hit{border-color:#fff4db;box-shadow:0 0 18px #ffce7baa;width:31px;height:31px}
+#crosshair.hit i{background:#ffc169;left:13px;top:13px}
+#crosshair.hit b{left:13px;background:#ffc169}
+body.boosting #vignette{box-shadow:inset 0 0 90px #6ce3e51c}
+body.boosting .power-track i{background:linear-gradient(90deg,#75cbdb,#c6fff2);box-shadow:0 0 18px #9fe9e0}
+body.boosting #flight-mode{color:#b6fff1}
+#world:focus-visible{outline:none}
+#hud{pointer-events:none}.spell-tray{pointer-events:auto}
+@media(max-width:800px){.route-progress{top:148px;width:180px}.run-stats{top:196px}.chain{top:200px}#roll-ready{bottom:146px}.route-progress>span{font-size:9px}}
+@media(prefers-reduced-motion:reduce){.loading-star{animation:none}#crosshair,.route-progress i{transition:none}body.boosting #vignette{box-shadow:none}}

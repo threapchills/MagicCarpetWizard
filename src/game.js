@@ -24,19 +24,22 @@ export function random(seed) { let n = seed >>> 0; return () => { n += 0x6D2B79F
 export function zoneAt(distance) { return Math.floor(Math.max(0, distance) / ZONE_LENGTH) % ZONES.length; }
 export function difficultyAt(distance) { return Math.min(3, Math.max(0, distance) / 3600); }
 export function flightSpeed(altitude, boosting, difficulty = 0) { return (boosting ? 54 : 23 + 21 * Math.exp(-Math.max(0, altitude - 1) / 5)) + difficulty * 3; }
-export function createRun(seed = 42) { return { seed, distance: 0, time: 0, x: 0, altitude: 3.5, vx: 0, vy: 0, speed: 30, power: 25, hp: 3, score: 0, chain: 0, chainTimer: 0, bestChain: 1, invulnerable: 2.5, boost: false, roll: 0, rollCooldown: 0, rollDirection: 1, shotCooldown: 0, spells: { fire: 1, frost: 0, storm: 0, echo: 0, magnet: 0 }, kills: 0, nearMisses: 0, tricks: 0, ended: false, events: [] }; }
+export function createRun(seed = 42) { return { seed, distance: 0, time: 0, x: 0, altitude: 3.5, vx: 0, vy: 0, speed: 30, power: 25, hp: 3, score: 0, chain: 0, chainTimer: 0, bestChain: 1, invulnerable: 2.5, boost: false, roll: 0, rollHeld: false, rollCooldown: 0, rollDirection: 1, shotCooldown: 0, spells: { fire: 1, frost: 0, storm: 0, echo: 0, magnet: 0 }, kills: 0, nearMisses: 0, tricks: 0, ended: false, events: [] }; }
 export function multiplier(run) { return Math.min(8, 1 + Math.floor(run.chain / 3)); }
 export function award(run, points, power = 0, chain = true) { if (chain) { run.chain++; run.chainTimer = 5; } run.score += Math.round(points * multiplier(run)); run.power = clamp(run.power + power, 0, 100); run.bestChain = Math.max(run.bestChain, multiplier(run)); }
 export function collectSpell(run, kind) { if (kind === 'ward') { run.hp = Math.min(3, run.hp + 1); run.invulnerable = Math.max(run.invulnerable, 5); } else { run.spells[kind] = Math.min(3, (run.spells[kind] || 0) + 1); } award(run, 100, 12); }
-export function damage(run) { if (run.invulnerable > 0 || run.ended) return false; run.hp--; run.invulnerable = 2; run.chain = 0; run.chainTimer = 0; run.power = Math.max(0, run.power - 15); if (run.hp <= 0) run.ended = true; return true; }
+export function damage(run) { if (run.invulnerable > 0 || run.ended) return false; run.hp--; run.invulnerable = 2; run.chain = 0; run.chainTimer = 0; run.roll = 0; run.power = Math.max(0, run.power - 15); if (run.hp <= 0) run.ended = true; return true; }
 export function updateRun(run, input, dt) {
   if (run.ended) return;
   dt = clamp(dt, 0, .05); run.time += dt;
   run.invulnerable = Math.max(0, run.invulnerable - dt); run.rollCooldown = Math.max(0, run.rollCooldown - dt); run.shotCooldown = Math.max(0, run.shotCooldown - dt);
-  run.vx = lerp(run.vx, input.steer * 19, 1 - Math.exp(-7 * dt));
+  run.vx = lerp(run.vx, input.steer * (run.boost ? 29 : 25), 1 - Math.exp(-9 * dt));
   run.vy = lerp(run.vy, input.lift * 12, 1 - Math.exp(-6 * dt));
   run.x = clamp(run.x + run.vx * dt, -21, 21); run.altitude = clamp(run.altitude + run.vy * dt, 1, 29);
-  if (input.roll && !run.roll && !run.rollCooldown && run.altitude >= 4) { run.roll = .85; run.rollCooldown = 1.35; run.rollDirection = input.steer < 0 ? -1 : 1; }
+  if ((run.x <= -21 && run.vx < 0) || (run.x >= 21 && run.vx > 0)) run.vx = 0;
+  if ((run.altitude <= 1 && run.vy < 0) || (run.altitude >= 29 && run.vy > 0)) run.vy = 0;
+  if (input.roll && !run.rollHeld && !run.roll && !run.rollCooldown && run.altitude >= 4) { run.roll = .85; run.rollCooldown = 1.35; run.rollDirection = input.steer < 0 ? -1 : 1; }
+  run.rollHeld = !!input.roll;
   if (run.roll > 0) { run.roll = Math.max(0, run.roll - dt); if (run.roll === 0 && run.altitude >= 4) { award(run, 90, 11); run.tricks++; run.events.push('roll'); } }
   run.boost = !!input.boost && (run.boost ? run.power > 0 : run.power >= 25);
   const rate = run.boost ? -15 : run.altitude < 3.5 ? 4.5 : .3;
@@ -45,11 +48,23 @@ export function updateRun(run, input, dt) {
   run.distance += run.speed * dt; run.score += run.speed * dt * .2;
   run.chainTimer = Math.max(0, run.chainTimer - dt); if (!run.chainTimer) run.chain = 0;
 }
+export function safeLaneAt(index, seed) {
+  // Two-row phrases alternate center with a seeded neighboring lane.
+  // Adjacent rows can never demand a full left-to-right crossing.
+  if (index < 2 || Math.floor(index / 2) % 2 === 0) return 0;
+  return random(seed + Math.floor(index / 4) * 8191)() < .5 ? -1 : 1;
+}
+export function segmentHitsSphere(from, to, center, radius) {
+  const dx = to.x - from.x, dy = to.y - from.y, ds = to.s - from.s;
+  const lengthSquared = dx * dx + dy * dy + ds * ds;
+  const t = lengthSquared ? clamp(((center.x - from.x) * dx + (center.y - from.y) * dy + (center.s - from.s) * ds) / lengthSquared, 0, 1) : 0;
+  return Math.hypot(from.x + dx * t - center.x, from.y + dy * t - center.y, from.s + ds * t - center.s) <= radius;
+}
 export function generateChunk(index, seed) {
   const rng = random(seed + index * 104729), start = index * CHUNK;
   const zone = zoneAt(start), difficulty = difficultyAt(start), type = ZONES[zone].type;
   const obstacles = [], pickups = [], enemies = [], rings = [];
-  const safeLane = Math.floor(rng() * 3) - 1;
+  const safeLane = safeLaneAt(index, seed);
   // Every row leaves a full flight lane clear. Outer architecture is decoration.
   if (index > 1) {
     for (let lane = -1; lane <= 1; lane++) {
@@ -58,7 +73,11 @@ export function generateChunk(index, seed) {
     }
   }
   const laneX = safeLane * 13;
-  for (let i = 0; i < 5; i++) pickups.push({ kind: 'gold', x: laneX + Math.sin(index + i * .7) * 2, s: start + 4 + i * 5, y: 2.3 + (index % 5 === 0 ? Math.sin(i / 4 * Math.PI) * 6 : 0) });
+  const previousX = safeLaneAt(index - 1, seed) * 13;
+  for (let i = 0; i < 6; i++) {
+    const t = clamp((4 + i * 5) / 17, 0, 1), ease = t * t * (3 - 2 * t);
+    pickups.push({ kind: 'gold', x: lerp(previousX, laneX, ease) + Math.sin(index + i * .7) * .65, s: start + 4 + i * 5, y: 2.3 + (index % 5 === 0 ? Math.sin(i / 5 * Math.PI) * 6 : 0) });
+  }
   if (index > 2 && index % 3 === 0) {
     const kinds = ['frost', 'storm', 'echo', 'fire', 'magnet', 'ward'];
     pickups.push({ kind: kinds[Math.floor(rng() * kinds.length)], x: laneX, s: start + 22, y: 5.5 + rng() * 3 });
@@ -71,5 +90,9 @@ export function generateChunk(index, seed) {
   return { index, start, zone, safeLane, obstacles, pickups, enemies, rings };
 }
 export function intersectsObstacle(run, obstacle) { return Math.abs(run.distance - obstacle.s) < obstacle.depth / 2 + .7 && Math.abs(run.x - obstacle.x) < obstacle.width / 2 + .7 && run.altitude < obstacle.height + .6; }
-export function nearObstacle(run, obstacle) { return Math.abs(run.distance - obstacle.s) < 2 && Math.abs(run.x - obstacle.x) < obstacle.width / 2 + 3 && run.altitude < obstacle.height + 3 && !intersectsObstacle(run, obstacle); }
+export function nearObstacle(run, obstacle) {
+  const passed = run.distance - obstacle.s - obstacle.depth / 2;
+  const lateral = Math.abs(run.x - obstacle.x);
+  return passed > .7 && passed < 3.5 && lateral < obstacle.width / 2 + 3 && run.altitude < obstacle.height + 3 && (lateral > obstacle.width / 2 + .7 || run.altitude > obstacle.height + .6);
+}
 export function spellDamage(spells, frozen = false) { return (1 + .45 * (spells.fire - 1)) * (frozen && spells.fire ? 1.8 : 1); }
