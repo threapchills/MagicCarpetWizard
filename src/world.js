@@ -1,13 +1,12 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RADIUS, CHUNK, ZONES, random } from './game.js';
+import { toonMaterial } from './toon.js';
 
-const gradient = new THREE.DataTexture(new Uint8Array([45, 135, 240]), 3, 1, THREE.RedFormat);
-gradient.minFilter = gradient.magFilter = THREE.NearestFilter; gradient.needsUpdate = true;
 const materials = new Map();
-export function mat(color, glow = false) {
-  const key = color + glow;
-  if (!materials.has(key)) materials.set(key, glow ? new THREE.MeshBasicMaterial({ color }) : new THREE.MeshToonMaterial({ color, gradientMap: gradient }));
+export function mat(color, glow = false, surface = 'plaster') {
+  const key = `${color}:${glow}:${surface}`;
+  if (!materials.has(key)) materials.set(key, glow ? new THREE.MeshBasicMaterial({ color }) : toonMaterial(color, { surface }));
   return materials.get(key);
 }
 const box = new THREE.BoxGeometry(1, 1, 1);
@@ -138,6 +137,7 @@ export function createChunkVisual(data, seed) {
   // Broad ground segments are curved across the planet's latitude.
   for (let x = -216; x <= 216; x += 12) {
     const tile = block(g, ZONES[data.zone].ground, x, -.65 - x * x / (2 * RADIUS), -CHUNK / 2, 12.2, 1.1, CHUNK + .2); tile.rotation.z = -x / RADIUS;
+    tile.material = mat(ZONES[data.zone].ground, false, 'sand');
     if ((type === 'city' || type === 'palace') && Math.abs(x) < 60) {
       block(g, '#eac493', x, -.045 - x * x / (2 * RADIUS), -CHUNK / 2, 12.1, .05, CHUNK);
     }
@@ -209,7 +209,7 @@ export function placeOnWorld(object, x, s, height, distance) {
 export function createCarpet() {
   const root = new THREE.Group(), body = new THREE.Group(); root.add(body);
   const geo = new THREE.PlaneGeometry(3.7, 5.3, 12, 18); geo.rotateX(-Math.PI / 2);
-  const fabric = new THREE.Mesh(geo, new THREE.MeshToonMaterial({ color: '#9d3e69', gradientMap: gradient, side: THREE.DoubleSide })); fabric.castShadow = true; body.add(fabric);
+  const fabric = new THREE.Mesh(geo, toonMaterial('#9d3e69', { surface: 'cloth', side: THREE.DoubleSide })); fabric.castShadow = true; fabric.receiveShadow = true; body.add(fabric);
   const trim = new THREE.Group(); body.add(trim);
   for (const side of [-1, 1]) {
     block(trim, '#edbd71', side * 1.69, .06, 0, .14, .07, 4.75);

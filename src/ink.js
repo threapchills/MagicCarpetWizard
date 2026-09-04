@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-// A single screen pass draws thin contours from depth discontinuities and color
+// A single screen pass draws black contours from depth discontinuities and color
 // boundaries. It avoids duplicating every world mesh for an outline pass.
 export class InkRenderer {
   constructor(renderer, camera) {
@@ -26,26 +26,32 @@ export class InkRenderer {
         uniform float nearPlane;
         uniform float farPlane;
         float distanceAt(vec2 uv){return -perspectiveDepthToViewZ(texture2D(depth,uv).x,nearPlane,farPlane);}
+        void edgePair(vec2 offset, float z, vec3 color, inout float depthEdge, inout float colorEdge, inout float nearest){
+          float a=distanceAt(vUv+offset), b=distanceAt(vUv-offset);
+          nearest=min(nearest,min(a,b));
+          // Opposing samples cancel gradual depth slopes on the planet. A raw
+          // first difference would blacken the ground near the horizon.
+          float bend=abs(a+b-2.*z)/max(min(z,min(a,b)),1.);
+          depthEdge=max(depthEdge,smoothstep(.014,.045,bend));
+          vec3 ca=texture2D(picture,vUv+offset).rgb;
+          vec3 cb=texture2D(picture,vUv-offset).rgb;
+          colorEdge=max(colorEdge,smoothstep(.24,.55,max(length(ca-color),length(cb-color))));
+        }
         void main(){
           vec3 color=texture2D(picture,vUv).rgb;
           float z=distanceAt(vUv);
           float depthEdge=0.0;
           float colorEdge=0.0;
-          for(int i=0;i<4;i++){
-            vec2 direction=i==0?vec2(1.,0.):i==1?vec2(-1.,0.):i==2?vec2(0.,1.):vec2(0.,-1.);
-            vec2 uv=vUv+direction*pixel;
-            float nz=distanceAt(uv);
-            depthEdge=max(depthEdge,smoothstep(.018,.055,abs(nz-z)/max(z,1.)));
-            vec3 neighbor=texture2D(picture,uv).rgb;
-            colorEdge=max(colorEdge,smoothstep(.18,.42,length(neighbor-color)));
-          }
-          float distanceFade=1.-smoothstep(90.,245.,z);
-          float edge=max(depthEdge*.72,colorEdge*.28)*distanceFade;
-          // Slight pigment separation, with blue-violet ink instead of harsh black.
-          color=mix(color,floor(color*22.+.5)/22.,.13);
-          color=mix(color,vec3(.026,.020,.048),edge);
-          float grain=fract(sin(dot(gl_FragCoord.xy,vec2(12.9898,78.233)))*43758.5453)-.5;
-          color+=grain*.007;
+          float nearest=z;
+          edgePair(vec2(pixel.x,0.),z,color,depthEdge,colorEdge,nearest);
+          edgePair(vec2(0.,pixel.y),z,color,depthEdge,colorEdge,nearest);
+          edgePair(pixel*.7071,z,color,depthEdge,colorEdge,nearest);
+          edgePair(vec2(pixel.x,-pixel.y)*.7071,z,color,depthEdge,colorEdge,nearest);
+          // Carry silhouettes well into the expanded landscape, then let fog
+          // absorb the ink. Fine color details use a lighter stroke weight.
+          float distanceFade=1.-smoothstep(190.,440.,nearest);
+          float edge=max(depthEdge,colorEdge*.55)*distanceFade;
+          color=mix(color,vec3(.001),edge);
           gl_FragColor=vec4(max(color,vec3(0.)),1.);
           #include <colorspace_fragment>
         }`,
@@ -54,7 +60,8 @@ export class InkRenderer {
   }
   resize() {
     const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
-    this.target.setSize(size.x, size.y); this.uniforms.pixel.value.set(1.15 / size.x, 1.15 / size.y);
+    const width = 1.35 * (this.renderer.getPixelRatio?.() || 1);
+    this.target.setSize(size.x, size.y); this.uniforms.pixel.value.set(width / size.x, width / size.y);
   }
   render(scene, camera) {
     this.renderer.setRenderTarget(this.target); this.renderer.render(scene, camera);

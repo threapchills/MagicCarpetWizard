@@ -10,7 +10,7 @@ export class BloodRibbons {
       geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
       for (let j = 0; j < 8; j++) { const n = j * 2; indices.push(n, n + 1, n + 2, n + 1, n + 3, n + 2); }
       geometry.setIndex(indices); geometry.computeVertexNormals();
-      const material = mat(i % 3 ? '#c92245' : '#f04642'); material.side = THREE.DoubleSide;
+      const material = mat(i % 3 ? '#c92245' : '#f04642', false, 'smooth'); material.side = THREE.DoubleSide;
       const visual = new THREE.Mesh(geometry, material); visual.frustumCulled = false; this.scene.add(visual);
       const angle = Math.random() * Math.PI * 2, speed = 5 + Math.random() * 14, life = 1.1 + Math.random() * 1.3;
       this.ribbons.push({ x, y, s, vx: Math.cos(angle) * speed, vy: 4 + Math.random() * 12, vs: Math.sin(angle) * speed, life, maxLife: life, width: .15 + Math.random() * .35, history: [], visual, positions });

@@ -25,7 +25,7 @@ The reticle has a white core, black contour, and glow for visibility against lig
 
 ## Art and ambience
 
-The world uses three-band toon lighting, blue-violet shadows, and a screen-space ink pass that traces silhouettes and color boundaries. Its graphic direction takes inspiration from Sable and Chants of Sennaar. Models and materials remain original procedural geometry; no textures or assets from those games are used.
+The world quantizes combined sunlight, ambient fill and cast shadows into three distinct cel-shaded bands, with cool shadows and warm highlights. A screen-space pass draws black silhouettes and finer internal contours, fading them into distant fog. Procedural plaster pigment, sand ripples and woven carpet textures stay attached to the models; mipmaps filter fine detail during fast flight. Its graphic direction takes inspiration from Sable and Chants of Sennaar. Models and textures are generated in code; no textures or assets from those games are used.
 
 There is **no background music**. The background is an emergent mix of nine sound excerpts from the user-supplied Slumbr app. Air, land and dream layers overlap in 9–13 second phrases, varying sample offsets, playback rate, stereo placement and filtering. Zone, height, speed, night, rain and sand weather steer the mix. Sources load only after sound is enabled, with a bounded decoded-buffer cache and voice count. Pausing or leaving the window fades the ambience down. Short synthesized action effects remain separate from the ambient layer. Press M or the wave button to enable sound.
 
@@ -59,7 +59,8 @@ In repository **Settings → Pages → Build and deployment**, set **Source** to
 - `src/main.js`: rendering, input, combat, effects and screens.
 - `src/audio.js`: audio routing, pause/mute, and synthesized action effects.
 - `src/ambience.js`: Slumbr sample selection, crossfades and environmental mixing.
-- `src/ink.js`: screen-space ink contours and pigment shading.
+- `src/toon.js`: combined-light cel shader and procedural pigment textures.
+- `src/ink.js`: screen-space black contours with distance fading.
 - `src/effects.js`: bounded toon blood ribbons.
 - `tests/game.test.js`: deterministic generation, flight, balance and long-run checks.
 - `tests/world.test.js`: geometry and spherical placement for all seven zones.
