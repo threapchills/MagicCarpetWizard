@@ -51,7 +51,8 @@ test('application boots, flies, casts, rolls once per press, pauses, resumes and
     assert.equal(snapshot().state, 'playing'); assert.ok(snapshot().altitude > 20); assert.ok(snapshot().distance > 45);
     const highAltitude = snapshot().altitude;
     dispatch('keydown', { code: 'KeyS' }); advance(.4); dispatch('keyup', { code: 'KeyS' }); assert.ok(snapshot().altitude < highAltitude);
-    dispatch('keydown', { code: 'KeyW' }); advance(.7); dispatch('keyup', { code: 'KeyW' }); assert.ok(snapshot().altitude > highAltitude);
+    const lowAltitude = snapshot().altitude;
+    dispatch('keydown', { code: 'KeyW' }); advance(.7); dispatch('keyup', { code: 'KeyW' }); assert.ok(snapshot().altitude > lowAltitude);
     dispatch('keydown', { code: 'Space' }); advance(3); assert.equal(snapshot().tricks, 1);
     dispatch('keyup', { code: 'Space' });
     let prevented = false;

@@ -42,6 +42,7 @@ function windowOn(parent, x, y, z, width, height, color = '#354e60', ry = 0) { r
 export function building(parent, x, z, w, h, d, rng, grand = false) {
   const base = -x * x / (2 * RADIUS);
   const g = new THREE.Group(); parent.add(g); g.position.set(x, base, z);
+  g.rotation.y = (rng() - .5) * Math.PI * 2;
   const walls = ['#f1bc86', '#e6a375', '#efd29f', '#d99672', '#f7d9a6'];
   const color = walls[Math.floor(rng() * walls.length)], roof = rng() > .35 ? '#398e91' : '#d6935e';
   block(g, color, 0, h / 2, 0, w, h, d);
@@ -100,23 +101,23 @@ function fountain(parent, x, z, scale = 1) {
 }
 
 function landmark(parent, type, side, rng) {
-  const x = side * 58, z = -18, ground = -x * x / (2 * RADIUS);
+  const x = side * (120 + rng() * 28), z = -18 - rng() * 28, ground = -x * x / (2 * RADIUS);
   if (type === 'city' || type === 'palace') {
-    building(parent, x, z, 21, 21, 20, rng, true);
-    for (const offset of [-15, 15]) {
-      building(parent, x + offset, z + 3, 9, 13, 12, rng, true);
-      minaret(parent, x + offset * 1.2, z + 10, 36, rng);
+    building(parent, x, z, 34, 34, 29, rng, true);
+    for (const offset of [-25, 25]) {
+      building(parent, x + offset, z + 3, 15, 23, 18, rng, true);
+      minaret(parent, x + offset * 1.2, z + 10, 56, rng);
     }
     // Three-tier stairs and an arcaded forecourt below the great dome.
     for (let i = 0; i < 3; i++) block(parent, '#efd1a0', x, ground + .3 + i * .45, z + 16 - i, 28 - i * 2, .6, 8);
     for (let i = -2; i <= 2; i++) windowOn(parent, x + i * 3.5, ground + 5, z + 10.04, 2, 5, '#36787f');
   } else if (type === 'canyon') {
-    for (const offset of [-10, 10]) rock(parent, x + offset, z, 7, 28, '#ba7f68', rng);
-    mesh(orb, '#c88e70', parent, [x, ground + 24, z], [19, 5, 5]);
+    for (const offset of [-17, 17]) rock(parent, x + offset, z, 12, 48, '#ba7f68', rng);
+    mesh(orb, '#c88e70', parent, [x, ground + 41, z], [32, 8, 9]);
   } else if (type === 'ancient') {
-    for (const offset of [-9, 9]) ruin(parent, x + offset, z, 23);
-    mesh(ring, '#e9b992', parent, [x, ground + 22, z], [8, 8, 8], [0, 0, 0]);
-    mesh(gem, '#9bd8d0', parent, [x, ground + 22, z], [2.4, 4, 2.4], [0, .5, .15], true);
+    for (const offset of [-16, 16]) ruin(parent, x + offset, z, 40);
+    mesh(ring, '#e9b992', parent, [x, ground + 36, z], [14, 14, 14], [0, 0, 0]);
+    mesh(gem, '#9bd8d0', parent, [x, ground + 36, z], [4, 7, 4], [0, .5, .15], true);
     for (let i = 0; i < 4; i++) block(parent, '#d7af97', x, ground + i * 1.1, z, 19 - i * 3, 1.2, 19 - i * 3);
   } else if (type === 'desert') {
     for (let i = 0; i < 4; i++) mesh(cone, i % 2 ? '#aa6274' : '#e4be87', parent, [x + (i - 1.5) * 8, ground + 4, z + Math.sin(i) * 6], [6, 8, 6]);
@@ -124,7 +125,7 @@ function landmark(parent, type, side, rng) {
     fountain(parent, x, z + 15, 2);
   } else if (type === 'river') {
     building(parent, x, z, 16, 16, 15, rng, true);
-    for (let i = 0; i < 5; i++) ruin(parent, side * (31 + i * 8), z + 10, 7);
+    for (let i = 0; i < 5; i++) ruin(parent, side * (75 + i * 18), z + 10, 13);
   } else {
     const tower = building(parent, x, z, 8, 15, 8, rng);
     for (let i = 0; i < 4; i++) { const a = i * Math.PI / 2 + .6; mesh(box, '#f5dcaa', tower, [Math.cos(a) * 4, 12 + Math.sin(a) * 4, 4.5], [7, .75, .15], [0, 0, a]); }
@@ -135,66 +136,69 @@ function landmark(parent, type, side, rng) {
 export function createChunkVisual(data, seed) {
   const rng = random(seed + data.index * 7919), g = new THREE.Group(), type = ZONES[data.zone].type;
   // Broad ground segments are curved across the planet's latitude.
-  for (let x = -112; x <= 112; x += 8) {
-    const ground = type === 'river' && Math.abs(x) < 12 ? '#52a6ad' : ZONES[data.zone].ground;
-    const tile = block(g, ground, x, -.65 - x * x / (2 * RADIUS), -CHUNK / 2, 8.2, 1.1, CHUNK + .2); tile.rotation.z = -x / RADIUS;
-    if ((type === 'city' || type === 'palace') && Math.abs(x) < 22) {
-      block(g, '#eac493', x, -.045 - x * x / (2 * RADIUS), -CHUNK / 2, 7.9, .05, CHUNK);
-      for (let z = -4; z > -CHUNK; z -= 8) block(g, '#d9b182', x, .01 - x * x / (2 * RADIUS), z, 7.8, .018, .08);
+  for (let x = -216; x <= 216; x += 12) {
+    const tile = block(g, ZONES[data.zone].ground, x, -.65 - x * x / (2 * RADIUS), -CHUNK / 2, 12.2, 1.1, CHUNK + .2); tile.rotation.z = -x / RADIUS;
+    if ((type === 'city' || type === 'palace') && Math.abs(x) < 60) {
+      block(g, '#eac493', x, -.045 - x * x / (2 * RADIUS), -CHUNK / 2, 12.1, .05, CHUNK);
     }
+  }
+  if (type === 'river') for (let z = 0; z < CHUNK; z += 8) {
+    const center = Math.sin((data.start + z) / 220) * 23;
+    const angle = Math.atan(Math.cos((data.start + z) / 220) * 23 / 220);
+    block(g, '#52a6ad', center, .02 - center * center / (2 * RADIUS), -z - 4, 40 + Math.sin((data.start + z) / 130) * 8, .08, 9, angle);
   }
   for (const side of [-1, 1]) {
     if (type === 'city' || type === 'palace') {
-      for (let row = 0; row < 3; row++) for (let j = 0; j < 2; j++) {
-        const x = side * (30 + row * 17 + rng() * 6), z = -4 - j * 18 - rng() * 6;
-        if (type === 'palace' && row === 0) { fountain(g, x, z, 1); palm(g, x + side * 6, z, 6 + rng() * 3, rng); }
-        else building(g, x, z, 7 + rng() * 6, 5 + rng() * 13, 7 + rng() * 6, rng, type === 'palace');
+      const count = 4 + Math.floor(rng() * 7);
+      for (let j = 0; j < count; j++) {
+        const x = side * (76 + rng() * 108), z = -rng() * CHUNK;
+        if (type === 'palace' && j % 3 === 0) { fountain(g, x, z, 1.7); palm(g, x + side * 10, z, 10 + rng() * 7, rng); }
+        else building(g, x, z, 10 + rng() * 14, 10 + rng() * 27, 10 + rng() * 13, rng, type === 'palace');
       }
-      if (data.index % 2 === 0) minaret(g, side * (41 + rng() * 9), -18, 22 + rng() * 12, rng);
-      for (let i = 0; i < 3; i++) palm(g, side * (23.5 + rng() * 4), -i * 13, 5 + rng() * 4, rng);
-      if (type === 'palace') for (let j = 0; j < 5; j++) block(g, '#567f65', side * 25, 1, -j * 8, 2, 2.1, 6);
+      if (rng() > .35) minaret(g, side * (95 + rng() * 60), -rng() * CHUNK, 34 + rng() * 30, rng);
+      for (let i = 0; i < 4; i++) palm(g, side * (62 + rng() * 30), -rng() * CHUNK, 8 + rng() * 7, rng);
+      if (type === 'palace') for (let j = 0; j < 4; j++) block(g, '#567f65', side * (64 + rng() * 16), -1, -rng() * CHUNK, 5, 4, 10, rng());
     } else if (type === 'desert') {
-      for (let i = 0; i < 5; i++) { const x = side * (31 + rng() * 65); mesh(orb, i % 2 ? '#e9ba7a' : '#dbab70', g, [x, -6 - x * x / (2 * RADIUS), -rng() * CHUNK], [12 + rng() * 13, 8 + rng() * 6, 14], [0, rng(), 0]); }
-      if (data.index % 3 === 0) { palm(g, side * 30, -12, 7, rng); mesh(cone, '#b45c69', g, [side * 33, 2, -23], [4, 4, 4]); }
+      for (let i = 0; i < 5; i++) { const x = side * (94 + rng() * 100); mesh(orb, i % 2 ? '#e9ba7a' : '#dbab70', g, [x, -9 - x * x / (2 * RADIUS), -rng() * CHUNK], [22 + rng() * 20, 16 + rng() * 14, 28], [0, rng() * 3, 0]); }
+      if (data.index % 3 === 0) { palm(g, side * 73, -22, 13, rng); mesh(cone, '#b45c69', g, [side * 82, -1, -35], [7, 8, 7]); }
     } else if (type === 'canyon') {
-      for (let i = 0; i < 6; i++) { const x = side * (28 + rng() * 38), h = 13 + rng() * 34; rock(g, x, -rng() * CHUNK, 5 + rng() * 7, h, i % 2 ? '#b97867' : '#ce9274', rng); }
+      for (let i = 0; i < 7; i++) { const x = side * (80 + rng() * 100), h = 22 + rng() * 64; rock(g, x, -rng() * CHUNK, 9 + rng() * 16, h, i % 2 ? '#b97867' : '#ce9274', rng); }
     } else if (type === 'river') {
-      for (let i = 0; i < 6; i++) palm(g, side * (25 + rng() * 45), -rng() * CHUNK, 5 + rng() * 7, rng);
-      if (data.index % 2 === 0) building(g, side * 43, -18, 7, 7, 8, rng);
-      for (let i = 0; i < 6; i++) block(g, '#a7dace', side * (2 + rng() * 7), .02, -rng() * CHUNK, .2, .035, 2 + rng() * 5);
-      if (data.index % 3 === 0) { block(g, '#7e7666', side * 16, .8, -18, 8, .4, 4); mesh(cone, '#fbdeb0', g, [side * 16, 3.9, -18], [2, 5, .08], [0, 0, .12]); }
+      for (let i = 0; i < 7; i++) palm(g, side * (67 + rng() * 95), -rng() * CHUNK, 9 + rng() * 10, rng);
+      if (data.index % 2 === 0) building(g, side * 103, -rng() * CHUNK, 15, 18, 17, rng);
+      if (data.index % 3 === 0) { block(g, '#7e7666', side * 66, -1.4, -28, 12, .7, 7, .3); mesh(cone, '#fbdeb0', g, [side * 66, 4, -28], [3, 9, .08], [0, .3, .12]); }
     } else if (type === 'farm') {
-      for (let row = 0; row < 5; row++) { const x = side * (29 + row * 9); block(g, row % 2 ? '#c9b76c' : '#718e5a', x, -.1 - x * x / (2 * RADIUS), -18, 7, .15, 33); for (let k = 0; k < 5; k++) mesh(cone, '#7a985b', g, [x, .7 - x * x / (2 * RADIUS), -k * 7], [1.9, 2, 1.9]); }
-      if (data.index % 2 === 0) building(g, side * 36, -18, 6, 5, 7, rng);
+      for (let row = 0; row < 5; row++) { const x = side * (80 + row * 22); block(g, row % 2 ? '#c9b76c' : '#718e5a', x, -.1 - x * x / (2 * RADIUS), -32, 18, .15, 55, (rng() - .5) * .45); for (let k = 0; k < 5; k++) mesh(cone, '#7a985b', g, [x + rng() * 7, .7 - x * x / (2 * RADIUS), -k * 13], [3, 4, 3]); }
+      if (data.index % 2 === 0) building(g, side * 85, -rng() * CHUNK, 12, 11, 14, rng);
     } else {
-      for (let i = 0; i < 4; i++) ruin(g, side * (28 + i * 13), -rng() * CHUNK, 6 + rng() * 14);
-      for (let i = 0; i < 4; i++) rock(g, side * (35 + rng() * 50), -rng() * CHUNK, 4 + rng() * 5, 8 + rng() * 8, '#ad8b89', rng);
+      for (let i = 0; i < 4; i++) ruin(g, side * (75 + i * 29 + rng() * 13), -rng() * CHUNK, 13 + rng() * 29);
+      for (let i = 0; i < 4; i++) rock(g, side * (90 + rng() * 95), -rng() * CHUNK, 7 + rng() * 10, 14 + rng() * 18, '#ad8b89', rng);
     }
   }
   for (const o of data.obstacles) {
-    const z = -(o.s - data.start);
+    const body = new THREE.Group(); body.position.set(o.x, -o.x * o.x / (2 * RADIUS), -(o.s - data.start)); body.rotation.y = o.angle || 0; g.add(body);
     if (type === 'city' || type === 'palace' || type === 'farm') {
-      // Roof ornaments are decorative: obstacle collision covers the main footprint.
-      // Flat roofs match the collision envelope exactly inside the playable lane.
-      const base = -o.x * o.x / (2 * RADIUS);
-      block(g, '#e8b380', o.x, base + o.height / 2, z, o.width, o.height, o.depth);
-      block(g, '#f6d9a6', o.x, base + o.height - .18, z, o.width + .2, .35, o.depth + .2);
-      windowOn(g, o.x, base + .05, z + o.depth / 2 + .02, 1.8, Math.min(3.5, o.height * .7));
-      for (const side of [-1, 1]) windowOn(g, o.x + side * o.width * .3, base + o.height * .57, z + o.depth / 2 + .025, .8, 1.4);
+      block(body, rng() > .5 ? '#e8b380' : '#edc89b', 0, o.height / 2, 0, o.width, o.height, o.depth);
+      block(body, '#f6d9a6', 0, o.height - .18, 0, o.width + .2, .35, o.depth + .2);
+      windowOn(body, 0, .05, o.depth / 2 + .02, 2.8, Math.min(5.5, o.height * .7));
+      for (const side of [-1, 1]) for (let level = 4; level < o.height - 2; level += 4.5) {
+        windowOn(body, side * o.width * .3, level, o.depth / 2 + .025, 1.2, 2);
+        windowOn(body, side * (o.width / 2 + .025), level, 0, 1.4, 2, '#354e60', side * Math.PI / 2);
+      }
     } else if (type === 'ancient') {
-      block(g, '#bf998c', o.x, o.height / 2 - o.x * o.x / (2 * RADIUS), z, o.width, o.height, o.depth);
-      block(g, '#e8c5a8', o.x, o.height - o.x * o.x / (2 * RADIUS), z, o.width + .4, .4, o.depth + .4);
+      block(body, '#bf998c', 0, o.height / 2, 0, o.width, o.height, o.depth);
+      block(body, '#e8c5a8', 0, o.height - .2, 0, o.width + .4, .4, o.depth + .4);
     } else {
-      const base = -o.x * o.x / (2 * RADIUS);
-      block(g, type === 'canyon' ? '#b97d68' : '#c79876', o.x, base + o.height / 2, z, o.width, o.height, o.depth);
-      block(g, '#d6aa84', o.x, base + o.height - .3, z, o.width + .1, .6, o.depth + .1);
+      block(body, type === 'canyon' ? '#b97d68' : '#c79876', 0, o.height / 2, 0, o.width, o.height, o.depth);
+      block(body, '#d6aa84', 0, o.height - .3, 0, o.width + .1, .6, o.depth + .1);
     }
   }
   if (data.index % 6 === 3) landmark(g, type, Math.floor(data.index / 6) % 2 ? -1 : 1, rng);
   // Gold roadside lanterns make the flight corridor legible at night.
   for (const side of [-1, 1]) {
-    block(g, '#8f7967', side * 23, 1.5 - 23 * 23 / (2 * RADIUS), -8, .13, 3, .13);
-    mesh(gem, '#ffe0a1', g, [side * 23, 3.3 - 23 * 23 / (2 * RADIUS), -8], [.35, .65, .35], [0, .4, 0], true);
+    const x = side * (59 + rng() * 3), z = -rng() * CHUNK;
+    block(g, '#8f7967', x, 2 - x * x / (2 * RADIUS), z, .18, 4, .18);
+    mesh(gem, '#ffe0a1', g, [x, 4.3 - x * x / (2 * RADIUS), z], [.5, .9, .5], [0, .4, 0], true);
   }
   return mergeGroup(g);
 }

@@ -15,12 +15,12 @@ catch { $('loading').innerHTML = '<p>This carpet needs WebGL 2 to fly.</p><p>Ple
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.65)); renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.NoToneMapping;
-const scene = new THREE.Scene(); scene.fog = new THREE.Fog('#c7d8c5', 110, 295);
+const scene = new THREE.Scene(); scene.fog = new THREE.Fog('#c7d8c5', 185, 480);
 const camera = new THREE.PerspectiveCamera(49, innerWidth / innerHeight, .2, 1100);
 const ink = new InkRenderer(renderer, camera);
 const ambient = new THREE.HemisphereLight('#f7dba6', '#655581', 1); scene.add(ambient);
 const sunlight = new THREE.DirectionalLight('#fff0c7', 1.9); sunlight.position.set(-60, 65, 25); sunlight.castShadow = true;
-sunlight.shadow.mapSize.set(2048, 2048); Object.assign(sunlight.shadow.camera, { left: -58, right: 58, top: 48, bottom: -55, near: 1, far: 190 });
+sunlight.shadow.mapSize.set(2048, 2048); Object.assign(sunlight.shadow.camera, { left: -90, right: 90, top: 75, bottom: -85, near: 1, far: 230 });
 sunlight.shadow.bias = -.0007; sunlight.shadow.normalBias = .3; sunlight.target.position.set(0, 0, -28); scene.add(sunlight, sunlight.target);
 const planetMaterial = mat('#dca773');
 const planet = new THREE.Mesh(new THREE.SphereGeometry(RADIUS, 96, 64), planetMaterial); planet.position.y = -RADIUS - 1; planet.receiveShadow = true; scene.add(planet);
@@ -187,7 +187,7 @@ function strike(e, chained = false) {
 }
 function fire() {
   if (run.shotCooldown > 0 || bullets.length > 65) return;
-  run.shotCooldown = .25 - Math.min(3, run.spells.fire) * .022; sound.spell();
+  run.shotCooldown = .19 - Math.min(3, run.spells.fire) * .016; sound.spell();
   let target = null, closest = .24;
   for (const c of chunks.values()) for (const e of c.enemies) {
     if (!e.active || e.s < run.distance + 3 || e.s > run.distance + 145) continue;
@@ -197,20 +197,20 @@ function fire() {
   }
   let tx, ty, ts;
   if (target) {
-    const travel = (target.s - run.distance) / 130, phase = target.phase + travel * (target.frozen ? .15 : .7);
+    const travel = (target.s - run.distance) / 250, phase = target.phase + travel * (target.frozen ? .15 : .7);
     tx = target.baseX + Math.sin(phase) * 2; ty = target.baseY + Math.sin(phase * 1.4) * .9; ts = target.s;
   }
   else {
     // Intersect the pointer ray with a plane ahead, then convert back to spherical altitude.
     const rayPoint = new THREE.Vector3(aim.x, aim.y, .5).unproject(camera), direction = rayPoint.sub(camera.position).normalize();
     const t = (-70 - camera.position.z) / Math.min(-.01, direction.z); rayPoint.copy(camera.position).addScaledVector(direction, t);
-    tx = clamp(rayPoint.x, -65, 65); ty = clamp(rayPoint.y + 70 * 70 / (2 * RADIUS), .3, 65); ts = run.distance + 70;
+    tx = clamp(rayPoint.x, -110, 110); ty = clamp(rayPoint.y + 70 * 70 / (2 * RADIUS), .3, 90); ts = run.distance + 70;
   }
   const count = 1 + run.spells.echo;
   for (let i = 0; i < count; i++) {
     const spread = (i - (count - 1) / 2) * .018, ds = Math.max(7, ts - run.distance);
     const visual = mesh(orb, run.spells.frost ? '#b6eeee' : '#ffc28a', scene, [0, 0, 0], [.27, .27, .75], [0, 0, 0], true);
-    bullets.push({ visual, x: run.x, y: run.altitude + .9, s: run.distance + 2, vx: (tx - run.x) / ds * 130 + spread * 130, vy: (ty - run.altitude - .9) / ds * 130, life: 1.8 });
+    bullets.push({ visual, x: run.x, y: run.altitude + .9, s: run.distance + 2, vx: (tx - run.x) / ds * 250 + spread * 250, vy: (ty - run.altitude - .9) / ds * 250, life: 1.4 });
   }
 }
 
@@ -221,7 +221,7 @@ function updateEntities(dt, distance, playing, previousDistance = distance) {
       if (!p.active) continue;
       const ahead = p.s - distance;
       if (playing && ahead < 17 && ahead > -3) {
-        const range = (p.kind === 'gold' ? 2.15 : 2.7) + run.spells.magnet * 1.3;
+        const range = (p.kind === 'gold' ? 2.8 : 3.5) + run.spells.magnet * 1.3;
         const d = Math.hypot(p.x - run.x, p.y - run.altitude, ahead);
         if (run.spells.magnet && d < 8 + run.spells.magnet * 2) { p.x = lerp(p.x, run.x, dt * 5); p.y = lerp(p.y, run.altitude, dt * 5); }
         if (d < range) {
@@ -250,9 +250,9 @@ function updateEntities(dt, distance, playing, previousDistance = distance) {
       feedback.frost.visible = e.frozen > 0; feedback.frost.rotation.y = globalTime;
       if (e.frozen) e.visual.scale.setScalar(.92 + Math.sin(globalTime * 14) * .025); else e.visual.scale.setScalar(1);
       const ahead = e.s - distance;
-      feedback.charge.visible = ahead > 12 && ahead < 85 && e.cooldown < .65;
+      feedback.charge.visible = ahead > 12 && ahead < 130 && e.cooldown < .65;
       if (feedback.charge.visible) { feedback.charge.scale.setScalar(1.1 + e.cooldown * 1.4); feedback.charge.rotation.z = globalTime * 4; }
-      if (playing && ahead > 12 && ahead < 85) {
+      if (playing && ahead > 12 && ahead < 130) {
         e.cooldown -= dt * (e.frozen ? .25 : 1);
         if (e.cooldown <= 0 && enemyShots.length < 28) {
           e.cooldown = 3.2; const visual = mesh(gem, '#e68fab', scene, [0, 0, 0], [.45, .45, .7], [0, 0, 0], true);
@@ -269,7 +269,7 @@ function updateEntities(dt, distance, playing, previousDistance = distance) {
   }
   if (!playing) return;
   for (let i = bullets.length - 1; i >= 0; i--) {
-    const b = bullets[i], from = { x: b.x, y: b.y, s: b.s }; b.s += 130 * dt; b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
+    const b = bullets[i], from = { x: b.x, y: b.y, s: b.s }; b.s += 250 * dt; b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
     let hit = false;
     for (const c of chunks.values()) for (const e of c.enemies) if (!hit && e.active && segmentHitsSphere(from, b, e, 1.9 + run.spells.fire * .15)) { strike(e); hit = true; }
     if (b.life <= 0 || hit) { scene.remove(b.visual); bullets.splice(i, 1); } else placeOnWorld(b.visual, b.x, b.s, b.y, distance);
@@ -302,7 +302,7 @@ function updateAtmosphere(dt, distance) {
   if (sand) horizon.lerp(new THREE.Color('#d3a773'), .55);
   if (raining) skyTop.lerp(new THREE.Color('#667e91'), .5);
   sky.uniforms.top.value.lerp(skyTop, dt * .5); sky.uniforms.bottom.value.lerp(horizon, dt * .5); scene.fog.color.lerp(horizon, dt * .5);
-  scene.fog.far = lerp(scene.fog.far, sand ? 165 : raining ? 215 : 295, dt * .3);
+  scene.fog.far = lerp(scene.fog.far, sand ? 290 : raining ? 370 : 480, dt * .3);
   planetMaterial.color.lerp(new THREE.Color(z.ground), dt * .5);
   ambient.intensity = lerp(ambient.intensity, 1.05 - night * .28, dt); sunlight.intensity = lerp(sunlight.intensity, 1.85 - night * .85, dt);
   sunlight.color.lerp(new THREE.Color(night > .5 ? '#b5c9fa' : '#ffe1b1'), dt * .5);
@@ -322,10 +322,10 @@ function updateCarpet(dt, playing) {
   carpet.root.position.set(x, altitude - x * x / (2 * RADIUS), 0);
   const rollProgress = 1 - run.roll / .85;
   const rollAngle = run.roll > 0 ? rollProgress * rollProgress * (3 - 2 * rollProgress) * Math.PI * 2 * run.rollDirection : 0;
-  carpet.body.rotation.z = lerp(carpet.body.rotation.z, -run.vx * .025 - x / RADIUS, dt * 7);
+  carpet.body.rotation.z = lerp(carpet.body.rotation.z, clamp(-run.vx * .015, -.7, .7) - x / RADIUS, 1 - Math.exp(-18 * dt));
   // Roll has a separate axis transform so ending at 2π never snaps the bank.
-  carpet.root.rotation.z = rollAngle; carpet.body.rotation.x = lerp(carpet.body.rotation.x, run.vy * .023, dt * 5);
-  carpet.body.rotation.y = lerp(carpet.body.rotation.y, -run.vx * .018, dt * 5);
+  carpet.root.rotation.z = rollAngle; carpet.body.rotation.x = lerp(carpet.body.rotation.x, run.vy * .018, 1 - Math.exp(-16 * dt));
+  carpet.body.rotation.y = lerp(carpet.body.rotation.y, clamp(-run.vx * .009, -.45, .45), 1 - Math.exp(-16 * dt));
   carpet.root.visible = !(playing && run.invulnerable > 0 && Math.floor(globalTime * 12) % 3 === 0);
   const pos = carpet.fabric.geometry.attributes.position;
   for (let i = 0; i < pos.count; i++) { const px = pos.getX(i), pz = pos.getZ(i); pos.setY(i, Math.sin(pz * 1.7 + globalTime * 5) * .075 + Math.pow(Math.abs(pz) / 2.65, 5) * (.22 + Math.sin(globalTime * 4) * .08) + Math.pow(Math.abs(px) / 1.85, 4) * .08); }
@@ -362,9 +362,14 @@ function updateTrails(dt, distance, playing) {
 }
 function updateCamera(dt) {
   if (state === 'menu') { goalPosition.set(11 + Math.sin(globalTime * .08) * 3, 26, 48); goalLook.set(-19, 1, -35); }
-  else { goalPosition.set(run.x * .58 + 1.5, 8.5 + run.altitude * .72, run.boost ? 22 : 21); goalLook.set(run.x * .72, 1.5 + run.altitude * .60, -32); }
-  camera.position.lerp(goalPosition, 1 - Math.exp(-dt * 4)); currentLook.lerp(goalLook, 1 - Math.exp(-dt * 4)); camera.lookAt(currentLook);
-  camera.fov = lerp(camera.fov, state === 'menu' ? 49 : run.boost ? 72 : 55 + clamp((run.speed - 25) * .35, 0, 9), dt * 2); camera.updateProjectionMatrix();
+  else {
+    const curvature = run.x * run.x / (2 * RADIUS);
+    goalPosition.set(run.x * .96 + 1.2, 7.5 + run.altitude * .82 - curvature, run.boost ? 23 : 22);
+    goalLook.set(run.x + run.vx * .12, 1.5 + run.altitude * .72 - curvature, -45);
+  }
+  const follow = state === 'menu' ? 4 : 10;
+  camera.position.lerp(goalPosition, 1 - Math.exp(-dt * follow)); currentLook.lerp(goalLook, 1 - Math.exp(-dt * follow)); camera.lookAt(currentLook);
+  camera.fov = lerp(camera.fov, state === 'menu' ? 49 : run.boost ? 78 : 60 + clamp((run.speed - 40) * .2, 0, 10), 1 - Math.exp(-dt * 5)); camera.updateProjectionMatrix();
 }
 function updateUI(weather) {
   $('weather').textContent = weather; $('zone-name').textContent = ZONES[zoneAt(state === 'menu' ? menuDistance : run.distance)].name;

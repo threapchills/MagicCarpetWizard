@@ -31,7 +31,9 @@ There is **no background music**. The background is an emergent mix of nine soun
 
 Spell crystals stack up to three levels. Ember increases damage; Frost slows spirits and enables fire shatters; Storm chains hits to nearby foes; Echo adds bolts; Charm attracts pickups. All collected effects combine automatically. Score multipliers cap at 8×.
 
-Seven procedural zones advance every 720 m: the Amber City, Sultan’s Gardens, Saffron Sea, Singing Canyons, River of Stars, Emerald Fields, and Ancestors’ Reach. The cycle repeats with capped difficulty scaling. Day and night cycle independently of procedural rain, wind and sand weather. Each new run has a new seed. Best distance and score are saved locally in the browser.
+Seven procedural zones advance every 1,280 m: the Amber City, Sultan’s Gardens, Saffron Sea, Singing Canyons, River of Stars, Emerald Fields, and Ancestors’ Reach. The cycle repeats with capped difficulty scaling. Day and night cycle independently of procedural rain, wind and sand weather. Each new run has a new seed. Best distance and score are saved locally in the browser.
+
+The playable corridor is 108 m wide, with five winding safe-lane choices, a 54 m flight ceiling and a 680 m planet radius. Low-flight speed reaches 76 m/s before difficulty bonuses, while skyfire reaches 102 m/s; dives add momentum. Steering reaches more than 90% of its target speed within 100 ms and brakes rapidly on release. Spells travel faster to keep up with the carpet. Architecture uses varied footprints, heights, full-angle decorative rotations, irregular spacing and larger landmarks. Playable obstacles use rotated collision boxes that match their models. Side scenery stays outside the playable corridor, and every generated obstacle row preserves a clear lane.
 
 ## Develop
 
