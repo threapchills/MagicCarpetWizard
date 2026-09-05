@@ -213,7 +213,7 @@ export function createChunkVisual(data, seed, arena = false) {
       for (let i = 0; i < 4; i++) rock(g, side * (90 + rng() * 95), -rng() * CHUNK, 7 + rng() * 10, 14 + rng() * 18, '#ad8b89', rng);
     }
   }
-  const rail = cliffRailAt(data.start);
+  const rail = data.disableRails ? null : cliffRailAt(data.start);
   if (rail && !arena) {
     // The inner face stays at |x|=56, just outside the playable boundary.
     // Low ledge stripes mark the wall that grants cliff-skimming speed.

@@ -46,8 +46,11 @@ test('application boots, flies, casts, rolls once per press, pauses, resumes and
       .replace('new THREE.WebGLRenderer(', 'new globalThis.__TestRenderer(');
     source += '\nexport const snapshot = () => ({ state, distance: run.distance, altitude: run.altitude, tricks: run.tricks, shots: bullets.length, chunks: chunks.size, particles: particles.length, hp: run.hp, weapon: run.weapon, boss: !!battle.boss, bossAge: battle.boss?.age, arenaClear: [...chunks.values()].every(c => c.combatClear), buff: run.buffs.rapid });';
     source += '\nexport const enterBoss = () => { run.distance = 1400; run.invulnerable = 999; run.buffs.rapid = 10; ensureChunks(run.distance, run.seed); };';
-    const { snapshot, enterBoss } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
+    source += '\nexport const raceSnapshot = () => ({ state, player: raceAttempt?.player, elapsed: raceAttempt?.elapsed, countdown: raceAttempt?.countdown, ghost: !!raceAttempt?.ghost, seed: raceAttempt?.course.seed, gates: raceView.gates.length, next: raceAttempt?.nextGate, records: raceRecords.get(raceLevel).best.map(b => b?.time), racing: document.body.classList.contains("racing") });';
+    source += '\nexport const approachNextGate = () => { const g = raceAttempt.course.gates[raceAttempt.nextGate]; Object.assign(run, { distance: g.s - .1, x: g.x, altitude: g.y, vx: 0, vy: 0 }); };';
+    const { snapshot, enterBoss, raceSnapshot, approachNextGate } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
     advance(.1); assert.equal(snapshot().state, 'menu');
+    dispatch('keydown', { code: 'Enter', target: { tagName: 'BUTTON' } }); assert.equal(snapshot().state, 'menu');
     elements.get('start').onclick(); dispatch('keydown', { code: 'KeyW' }); advance(2.1); dispatch('keyup', { code: 'KeyW' });
     assert.equal(snapshot().state, 'playing'); assert.ok(snapshot().altitude > 20); assert.ok(snapshot().distance > 45);
     const highAltitude = snapshot().altitude;
@@ -80,6 +83,27 @@ test('application boots, flies, casts, rolls once per press, pauses, resumes and
     elements.get('pause').onclick(); elements.get('pause-restart').onclick();
     assert.equal(snapshot().boss, false); assert.equal(snapshot().arenaClear, false); assert.equal(snapshot().buff, 0); assert.equal(elements.get('boss-hud').hidden, true);
     advance(.1); assert.ok(renders > 1000);
+    elements.get('pause').onclick(); elements.get('pause-menu').onclick(); elements.get('race-button').onclick();
+    assert.equal(raceSnapshot().state, 'race-setup'); assert.equal(elements.get('race-setup').hidden, false);
+    elements.get('race-hard').onclick(); elements.get('race-start').onclick();
+    assert.equal(raceSnapshot().player, 0); assert.equal(raceSnapshot().ghost, false); assert.equal(raceSnapshot().racing, true); assert.equal(raceSnapshot().gates, 8);
+    const seed = raceSnapshot().seed; advance(1); assert.equal(snapshot().distance, 0); assert.equal(raceSnapshot().elapsed, 0);
+    elements.get('pause').onclick(); const countdown = raceSnapshot().countdown; advance(1); assert.equal(raceSnapshot().countdown, countdown);
+    elements.get('resume').onclick(); advance(2.2); assert.ok(raceSnapshot().elapsed > 0);
+    elements.get('world').pointerdown({ button: 0, pointerId: 8, preventDefault() {} }); advance(.1); assert.equal(snapshot().shots, 0); dispatch('pointerup');
+    elements.get('pause').onclick(); const raceTime = raceSnapshot().elapsed; advance(.5); assert.equal(raceSnapshot().elapsed, raceTime);
+    elements.get('pause-restart').onclick(); assert.equal(raceSnapshot().seed, seed); assert.equal(raceSnapshot().elapsed, 0); assert.equal(raceSnapshot().player, 0);
+    advance(3.1);
+    for (let i = 0; i < 8; i++) { approachNextGate(); advance(.03); }
+    assert.equal(raceSnapshot().state, 'race-ended'); assert.equal(elements.get('race-results').hidden, false); assert.ok(raceSnapshot().records[0] > 0); assert.equal(snapshot().boss, false);
+    elements.get('race-next').onclick(); assert.equal(raceSnapshot().player, 1); assert.equal(raceSnapshot().seed, seed); assert.equal(raceSnapshot().ghost, true);
+    advance(3.2); for (let i = 0; i < 8; i++) { approachNextGate(); advance(.03); }
+    assert.equal(raceSnapshot().state, 'race-ended'); assert.ok(raceSnapshot().records[1] > 0);
+    elements.get('race-next').onclick(); assert.equal(raceSnapshot().player, 0); assert.equal(raceSnapshot().ghost, true);
+    elements.get('pause').onclick(); elements.get('pause-menu').onclick(); assert.equal(raceSnapshot().state, 'race-setup');
+    elements.get('race-new').onclick(); assert.deepEqual(raceSnapshot().records, [undefined, undefined]);
+    elements.get('race-back').onclick(); elements.get('start').onclick(); advance(.1);
+    assert.equal(raceSnapshot().racing, false); assert.equal(raceSnapshot().gates, 0); assert.equal(snapshot().state, 'playing'); assert.equal(snapshot().hp, 3);
   } finally {
     for (const [key, descriptor] of oldGlobals) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else delete globalThis[key]; }
   }

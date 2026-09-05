@@ -51,6 +51,14 @@ Seven procedural zones advance every 1,280 m: the Amber City, Sultan’s Gardens
 
 The playable corridor is 108 m wide, with five winding safe-lane choices, a 54 m flight ceiling and a 680 m planet radius. Low-flight speed reaches 76 m/s before difficulty bonuses, while skyfire reaches 102 m/s; dives add momentum. Steering reaches more than 90% of its target speed within 100 ms and brakes rapidly on release. Spells travel faster to keep up with the carpet. Architecture uses varied footprints, heights, full-angle decorative rotations, irregular spacing and larger landmarks. Playable obstacles use rotated collision boxes that match their models. Side scenery stays outside the playable corridor, and every generated obstacle row preserves a clear lane.
 
+## Hot-seat ghost races
+
+Choose **Race a friend** for two players taking turns on one keyboard. Easy (896 m) has broad gates and sparse obstacles, Medium (1,280 m) adds rooftop slaloms, and Hard (1,536 m) has tighter gates and dense canyon formations. Each difficulty has its own generated course and two local personal bests. Both players use identical layouts, flight rules, starting power and checkpoint rewards. Monsters and combat stay in the adventure mode.
+
+The three-second countdown holds the carpet still. Fly through every checkpoint gate and the checkered finish ring; the HUD shows the next gate’s number, distance and height. W climbs, S descends, A/D steer, Shift boosts and Space rolls. Low flight and completed rolls build power; gates refill 12 power. Collisions or missed gates return you to the last checkpoint with a brief recovery while the timer keeps running. Attempts end after three minutes if unfinished.
+
+After finishing, pass the keyboard using **Pass to Player 2/1**, or retry with the same player. Only a faster completed run replaces that player’s ghost. Player 1 races Player 2’s rose ghost, and Player 2 races Player 1’s cyan ghost. Playback follows recorded positions by elapsed time, including resets, and never collides with the rider. Best times and their recordings persist in this browser when local storage is available. **New course** clears both players’ times only for the selected difficulty. Pause freezes the countdown, race clock and ghost.
+
 ## Develop
 
 Requires Node.js 22 and a browser with WebGL 2. Desktop mouse and keyboard are required for gameplay.
@@ -73,6 +81,9 @@ In repository **Settings → Pages → Build and deployment**, set **Source** to
 - `src/game.js`: seeded generation, flight rules, scoring, spell progression and collision rules.
 - `src/world.js`: procedural 3D models, sphere placement and merged scenery.
 - `src/main.js`: rendering, input, combat, effects and screens.
+- `src/race.js`: procedural courses, checkpoint rules, race timing and saved ghost records.
+- `src/race-view.js`: checkpoint and finish gates and translucent opponent playback.
+- `tests/race.test.js`: course fairness, complete simulated flights, resets, finish timing, ghost persistence and visuals.
 - `src/audio.js`: gesture-based startup, saved mix controls, pause/mute and audio status.
 - `src/sample-effects.js`: recorded effects, preload/cache and bounded playback.
 - `tests/audio.test.js`: startup, audio routing, preferences, mute races and sample playback.

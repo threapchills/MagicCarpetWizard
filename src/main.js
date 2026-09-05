@@ -10,6 +10,9 @@ import { Battle } from './battle.js';
 import { WEAPONS } from './combat.js';
 import { WeatherField, weatherAt } from './weather.js';
 import { MagicField } from './magic.js';
+import { RACE_LEVELS, RaceRecords, createCourse, createAttempt, generateRaceChunk, stepRace, formatTime } from './race.js';
+import { RaceView } from './race-view.js';
+import './race.css';
 
 const $ = id => document.getElementById(id);
 const canvas = $('world');
@@ -34,6 +37,8 @@ const blood = new BloodRibbons(scene);
 const magic = new MagicField(scene, Math.min(devicePixelRatio, 1.65));
 const chunks = new Map(), bullets = [], particles = [], enemyShots = [];
 const sound = new Soundscape();
+const raceRecords = new RaceRecords(), raceView = new RaceView(scene);
+let raceAttempt = null, raceLevel = 'easy', nextPlayer = 0;
 let state = 'menu', run = createRun(), globalTime = 0, lastTime = performance.now(), uiClock = 0;
 let menuDistance = 90, lastZone = 0, bannerTime = 0, toastTime = 0, flashTime = 0, shootHeld = false, helpWasRunning = false;
 let notifyPriority = 0, hitTime = 0, trailClock = 0, particleClock = 0, accumulator = 0;
@@ -82,6 +87,7 @@ function updateSpellTray() {
   }
 }
 function clearWorld() {
+  raceView.clear();
   battle.clear(); blood.clear(); magic.clear();
   for (const c of chunks.values()) { scene.remove(c.visual); disposeChunk(c.visual); for (const item of [...c.pickups, ...c.enemies, ...c.rings]) scene.remove(item.visual); }
   chunks.clear();
@@ -93,7 +99,7 @@ function ensureChunks(distance, seed) {
   for (const [id, c] of chunks) if (id < index - 2 || id > index + 8) { scene.remove(c.visual); disposeChunk(c.visual); for (const item of [...c.pickups, ...c.enemies, ...c.rings]) scene.remove(item.visual); chunks.delete(id); }
   for (let id = Math.max(0, index - 2); id <= index + 8; id++) {
     if (chunks.has(id)) continue;
-    const c = generateChunk(id, seed); c.combatClear = !!battle.boss; c.visual = createChunkVisual(c, seed, c.combatClear); scene.add(c.visual);
+    const c = raceAttempt ? generateRaceChunk(id, raceAttempt.course) : generateChunk(id, seed); c.combatClear = !!battle.boss; c.visual = createChunkVisual(c, seed, c.combatClear); scene.add(c.visual);
     for (const p of c.pickups) { p.visual = createPickup(p.kind); scene.add(p.visual); p.active = true; }
     for (const e of c.enemies) { e.visual = createEnemy(e.kind); scene.add(e.visual); e.active = true; e.baseX = e.x; e.baseY = e.y; e.baseS = e.s; e.radius = e.kind === 'brute' ? 3.1 : 2.4; e.maxHp = e.hp; e.cooldown = 1.1 + (id % 3) * .25; e.frozen = 0; }
     for (const r of c.rings) { r.visual = createRing(r.radius); scene.add(r.visual); r.active = true; }
@@ -108,17 +114,24 @@ function setArena(active) {
     if (!active && c.combatClear) for (const e of c.enemies) { e.active = false; e.visual.visible = false; }
   }
 }
-function begin() {
+function begin(mode = 'adventure') {
   windowFocused = true;
   sound.setPaused(false);
   void sound.start();
-  clearWorld(); run = createRun(Math.floor(Math.random() * 1000000)); state = 'playing'; lastZone = 0;
+  clearWorld();
+  if (mode !== 'race') raceAttempt = null;
+  run = raceAttempt ? raceAttempt.run : createRun(Math.floor(Math.random() * 1000000)); state = 'playing'; lastZone = 0;
+  document.body.classList.toggle('racing', !!raceAttempt);
+  if (raceAttempt) { globalTime = 0; raceView.start(raceAttempt.course, raceAttempt.player); }
   keys.clear(); shootHeld = false; bannerTime = toastTime = flashTime = hitTime = accumulator = trailClock = particleClock = 0;
   $('damage-flash').style.opacity = '0'; $('crosshair').classList.remove('hit', 'locked');
-  for (const id of ['start-screen', 'end-screen', 'pause-screen', 'help-screen', 'menu-footer']) $(id).hidden = true;
+  for (const id of ['start-screen', 'end-screen', 'pause-screen', 'help-screen', 'menu-footer', 'race-setup', 'race-results']) $(id).hidden = true;
   for (const id of ['hud', 'pause', 'crosshair']) $(id).hidden = false;
   document.body.classList.add('playing'); $('zone-banner').classList.remove('show'); updateSpellTray(); ensureChunks(0, run.seed);
-  notify('1 Fireball · 2 Lightning · 3 Wind blast · hold click to cast', 5); canvas.focus();
+  $('race-hud').hidden = !raceAttempt; $('race-countdown').hidden = !raceAttempt;
+  $('pause-restart').textContent = raceAttempt ? 'Retry this course' : 'Start a fresh journey';
+  notify(raceAttempt ? 'Fly through every gate · skim low · SHIFT to boost' : '1 Fireball · 2 Lightning · 3 Wind blast · hold click to cast', 5); canvas.focus();
+  updateRaceUI();
 }
 function pauseGame() { if (state !== 'playing') return; sound.setPaused(true); state = 'paused'; accumulator = 0; keys.clear(); shootHeld = false; $('pause-screen').hidden = false; $('crosshair').hidden = true; document.body.classList.remove('playing', 'boosting'); $('resume').focus(); }
 function resume() { if (state !== 'paused') return; sound.setPaused(false); state = 'playing'; accumulator = 0; $('pause-screen').hidden = true; $('crosshair').hidden = false; document.body.classList.add('playing'); }
@@ -132,13 +145,67 @@ function finish() {
   $('menu-best').textContent = `${Math.floor(best).toLocaleString()} m`; $('restart').focus();
 }
 function menu() {
-  state = 'menu'; clearWorld(); run = createRun(); menuDistance = 90; toastTime = bannerTime = 0;
-  ['end-screen', 'hud', 'pause', 'crosshair', 'pause-screen'].forEach(id => $(id).hidden = true);
-  $('start-screen').hidden = $('menu-footer').hidden = false; $('zone-banner').classList.remove('show'); $('toast').classList.remove('show'); document.body.classList.remove('playing'); $('start').focus();
+  state = 'menu'; clearWorld(); raceAttempt = null; run = createRun(); menuDistance = 90; toastTime = bannerTime = 0;
+  ['end-screen', 'hud', 'pause', 'crosshair', 'pause-screen', 'race-setup', 'race-results', 'race-hud', 'race-countdown'].forEach(id => $(id).hidden = true);
+  $('start-screen').hidden = $('menu-footer').hidden = false; $('zone-banner').classList.remove('show'); $('toast').classList.remove('show'); document.body.classList.remove('playing', 'racing', 'boosting'); $('start').focus();
+}
+function raceSetup() {
+  menu(); state = 'race-setup'; $('start-screen').hidden = true; $('race-setup').hidden = false;
+  updateRaceSetup(); $('race-start').focus();
+}
+function updateRaceSetup() {
+  const session = raceRecords.get(raceLevel), config = RACE_LEVELS[raceLevel];
+  for (const level of Object.keys(RACE_LEVELS)) $('race-' + level).setAttribute('aria-pressed', String(level === raceLevel));
+  $('race-description').textContent = `${config.description} · ${config.length.toLocaleString()} m`;
+  $('race-course').textContent = `COURSE ${session.seed.toString(36).toUpperCase()} · SAME COURSE FOR BOTH RIDERS`;
+  for (let i = 0; i < 2; i++) $('race-p' + (i + 1)).textContent = formatTime(session.best[i]?.time);
+  $('race-start').textContent = `Player ${nextPlayer + 1} · Ready to race ↗`;
+}
+function startRace(player = nextPlayer) {
+  const session = raceRecords.get(raceLevel);
+  raceAttempt = createAttempt(createCourse(raceLevel, session.seed), player, session.best[1 - player]);
+  begin('race');
+}
+function finishRace() {
+  const a = raceAttempt, personalBest = raceRecords.complete(a);
+  state = 'race-ended'; nextPlayer = 1 - a.player; shootHeld = false; keys.clear();
+  for (const id of ['hud', 'pause', 'crosshair', 'race-countdown']) $(id).hidden = true;
+  document.body.classList.remove('playing', 'boosting'); $('race-results').hidden = false;
+  $('race-result-title').textContent = a.dnf ? 'Time’s up.' : personalBest ? 'Personal best!' : 'Across the line.';
+  $('race-result-time').textContent = a.dnf ? 'DNF' : formatTime(a.elapsed);
+  $('race-result-copy').textContent = `Player ${a.player + 1} · ${a.course.name} · ${a.crashes} resets${a.dnf ? ' · 3 minute limit' : ''}`;
+  const bests = raceRecords.get(raceLevel).best;
+  $('race-result-scores').textContent = `P1 ${formatTime(bests[0]?.time)}   /   P2 ${formatTime(bests[1]?.time)}`;
+  $('race-result-leader').textContent = bests.every(Boolean) ? Math.abs(bests[0].time - bests[1].time) < .0005 ? 'A dead heat. Settle it on the next run.' : `Player ${bests[0].time < bests[1].time ? 1 : 2} leads by ${formatTime(Math.abs(bests[0].time - bests[1].time))}` : 'Your opponent’s best finished run becomes your ghost.';
+  $('race-next').textContent = `Pass to Player ${nextPlayer + 1} ↗`; $('race-retry').textContent = `Retry · Player ${a.player + 1}`; $('race-next').focus();
+  raceView.update(a);
+}
+function updateRaceUI() {
+  if (!raceAttempt) return;
+  const a = raceAttempt, gate = a.course.gates[a.nextGate];
+  $('race-timer').textContent = formatTime(a.elapsed);
+  $('race-rider').textContent = `PLAYER ${a.player + 1} · ${a.course.name.toUpperCase()}`;
+  $('race-target').textContent = gate ? `${a.nextGate === a.course.gates.length - 1 ? 'FINISH' : 'GATE ' + (a.nextGate + 1) + ' / ' + a.course.gates.length} · ${Math.max(0, Math.ceil(gate.s - run.distance))} m · ${Math.round(gate.y)} m HIGH` : 'FINISHED';
+  $('race-ghost-label').textContent = a.ghost ? `P${2 - a.player} GHOST · ${formatTime(a.ghost.time)}` : 'NO OPPONENT GHOST YET · SET THE FIRST TIME';
+  const countdown = a.countdown > 0 ? String(Math.ceil(a.countdown)) : a.elapsed < .65 ? 'GO!' : '';
+  $('race-countdown').hidden = !countdown || state !== 'playing';
+  if ($('race-countdown').textContent !== countdown) $('race-countdown').textContent = countdown;
+}
+function raceStep(input) {
+  const event = stepRace(raceAttempt, input, STEP);
+  if (event === 'crash' || event === 'miss') { trailHistory.length = 0; sound.hit(); flashTime = .3; $('damage-flash').style.opacity = '1'; notify(event === 'miss' ? 'Missed gate · back to checkpoint' : 'Clipped it · back to checkpoint', 1.6, 3); }
+  if (event === 'gate') { sound.trick(); particleBurst(run.x, run.altitude, run.distance, '#abffe1', 22); }
+  if (event === 'finish' || event === 'timeout') { if (event === 'finish') sound.trick(); finishRace(); }
 }
 function openHelp() { if (!$('help-screen').hidden) return; helpWasRunning = state === 'playing'; if (helpWasRunning) pauseGame(); $('pause-screen').hidden = true; $('help-screen').hidden = false; $('close-help').focus(); }
 function closeHelp() { $('help-screen').hidden = true; if (helpWasRunning) resume(); else if (state === 'paused') $('pause-screen').hidden = false; }
-$('start').onclick = begin; $('restart').onclick = begin; $('pause-restart').onclick = begin; $('resume').onclick = resume; $('pause').onclick = pauseGame; $('back-menu').onclick = menu;
+$('start').onclick = () => begin(); $('restart').onclick = () => begin(); $('pause-restart').onclick = () => raceAttempt ? startRace(raceAttempt.player) : begin(); $('resume').onclick = resume; $('pause').onclick = pauseGame; $('back-menu').onclick = menu;
+$('race-button').onclick = raceSetup; $('race-start').onclick = () => startRace(); $('race-next').onclick = () => startRace();
+$('race-retry').onclick = () => startRace(raceAttempt.player); $('race-change').onclick = raceSetup;
+$('race-back').onclick = menu; $('race-home').onclick = menu; $('pause-menu').onclick = () => raceAttempt ? raceSetup() : menu();
+$('race-new').onclick = () => { raceRecords.regenerate(raceLevel); nextPlayer = 0; updateRaceSetup(); };
+$('race-swap').onclick = () => { nextPlayer = 1 - nextPlayer; updateRaceSetup(); };
+for (const level of Object.keys(RACE_LEVELS)) $('race-' + level).onclick = () => { raceLevel = level; nextPlayer = 0; updateRaceSetup(); };
 $('help-button').onclick = openHelp; $('close-help').onclick = closeHelp; $('guide-fly').onclick = closeHelp;
 function updateAudioUI() {
   $('sound').classList.toggle('sound-on', sound.enabled);
@@ -156,12 +223,14 @@ $('sound').onclick = async () => { await sound.toggle(); updateAudioUI(); };
 for (const kind of ['ambience', 'effects']) $(kind + '-volume').addEventListener('input', e => { sound.setVolume(kind, Number(e.target.value) / 100); updateAudioUI(); });
 updateAudioUI();
 document.addEventListener('keydown', e => {
-  if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+  const nativeControl = ['BUTTON', 'INPUT', 'SUMMARY'].includes(e.target?.tagName);
+  if (!nativeControl && ['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
   if (!e.repeat) {
     if (e.code === 'Escape' || e.code === 'KeyP') { if (!$('help-screen').hidden) closeHelp(); else if (state === 'playing') pauseGame(); else if (state === 'paused') resume(); return; }
-    if (e.code === 'Enter' && $('help-screen').hidden && (state === 'menu' || state === 'ended')) { e.preventDefault(); begin(); return; }
+    if (e.code === 'Enter' && !nativeControl && $('help-screen').hidden && (state === 'menu' || state === 'ended')) { e.preventDefault(); begin(); return; }
+    if (e.code === 'Enter' && !nativeControl && $('help-screen').hidden && ['race-setup', 'race-ended'].includes(state)) { e.preventDefault(); startRace(); return; }
     if (e.code === 'KeyM') $('sound').click();
-    if (state === 'playing') {
+    if (state === 'playing' && !raceAttempt) {
       const weapon = { Digit1: 'fire', Digit2: 'storm', Digit3: 'wind' }[e.code];
       if (weapon) battle.switchWeapon(run, weapon);
       if (e.code === 'KeyQ') battle.switchWeapon(run, WEAPONS[(WEAPONS.indexOf(run.weapon) + 1) % WEAPONS.length]);
@@ -228,12 +297,12 @@ function updateEntities(dt, distance, playing, previousDistance = distance) {
       }
     }
     for (const e of c.enemies) battle.updateEnemy(e, dt, distance, run, playing, globalTime);
-    if (playing && !c.combatClear) for (const o of c.obstacles) {
+    if (playing && !raceAttempt && !c.combatClear) for (const o of c.obstacles) {
       if (intersectsObstacle(run, o)) hurt();
       else if (!o.near && nearObstacle(run, o)) { o.near = true; run.nearMisses++; award(run, 70, 9); notify('Silk-thin escape · +skyfire', 1.1); sound.collect(); }
     }
   }
-  if (playing) battle.update(dt, run, previousDistance);
+  if (playing && !raceAttempt) battle.update(dt, run, previousDistance);
 }
 function updateParticles(dt, distance) {
   for (let i = particles.length - 1; i >= 0; i--) {
@@ -246,7 +315,7 @@ function updateParticles(dt, distance) {
   particleMesh.instanceMatrix.needsUpdate = true; if (particleMesh.instanceColor) particleMesh.instanceColor.needsUpdate = true;
 }
 function updateAtmosphere(dt, distance) {
-  const z = ZONES[zoneAt(distance)], cycle = state === 'menu' ? .14 : run.time / 150 + .14;
+  const z = ZONES[raceAttempt ? raceAttempt.course.zone : zoneAt(distance)], cycle = state === 'menu' ? .14 : run.time / 150 + .14;
   const daylight = (Math.sin(cycle * Math.PI * 2) + 1) / 2, night = 1 - THREE.MathUtils.smoothstep(daylight, .12, .6);
   const conditions = weatherAt(state === 'menu' ? 0 : run.time, z.type);
   const { sand, rain: raining, storm, wind } = conditions;
@@ -325,7 +394,7 @@ function updateCamera(dt) {
 }
 function updateUI(weather) {
   updateAudioUI();
-  $('weather').textContent = weather; $('zone-name').textContent = ZONES[zoneAt(state === 'menu' ? menuDistance : run.distance)].name;
+  $('weather').textContent = weather; $('zone-name').textContent = raceAttempt ? `${raceAttempt.course.name} · Ghost race` : ZONES[zoneAt(state === 'menu' ? menuDistance : run.distance)].name;
   if (state !== 'playing') return;
   $('distance').textContent = Math.floor(run.distance).toLocaleString(); $('score').textContent = Math.floor(run.score).toLocaleString();
   $('hearts').textContent = Array.from({ length: 3 }, (_, i) => i < run.hp ? '♥' : '♡').join(' '); $('hearts').setAttribute('aria-label', `${run.hp} health`);
@@ -339,13 +408,13 @@ function updateUI(weather) {
   $('combat-buffs').textContent = Object.entries(run.buffs).filter(([, t]) => t > 0).map(([kind, t]) => SPELLS[kind].name.toUpperCase() + ' ' + Math.ceil(t) + 's').join('  ·  ');
   $('active-spell').textContent = SPELLS[run.weapon].name.toUpperCase() + ' · LV ' + run.spells[run.weapon] + ' · 1 / 2 / 3 OR Q';
   const nextRail = cliffRailAt(run.distance + 140), railPhrase = Math.floor((run.distance + 140) / 2560);
-  if (nextRail && !battle.boss && run.railNotified !== railPhrase) {
+  if (nextRail && !raceAttempt && !battle.boss && run.railNotified !== railPhrase) {
     run.railNotified = railPhrase;
     notify(`CLIFF RAIL AHEAD · ${nextRail.side > 0 ? 'RIGHT' : 'LEFT'} EDGE · SKIM AT 6–46m`, 4, 2);
   }
   $('roll-ready').textContent = run.roll ? '✧ ROLLING' : run.rollCooldown > 0 ? `ROLL · ${run.rollCooldown.toFixed(1)}s` : run.altitude < 4 ? 'ROLL · CLIMB TO 4m' : 'SPACE · ROLL READY';
   document.body.classList.toggle('boosting', run.boost);
-  $('crosshair').classList.toggle('locked', !!battle.lock(run, aim, camera));
+  $('crosshair').classList.toggle('locked', !raceAttempt && !!battle.lock(run, aim, camera));
 }
 
 ensureChunks(menuDistance, run.seed); camera.position.set(11, 26, 48); camera.lookAt(-19, 1, -35);
@@ -360,20 +429,24 @@ function frame(now) {
     const lift = (keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0) - (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0);
     const input = { steer, lift, boost: keys.has('ShiftLeft') || keys.has('ShiftRight'), roll: keys.has('Space'), arena: !!battle.boss || !!chunks.get(Math.floor(run.distance / CHUNK))?.combatClear };
     accumulator = Math.min(accumulator + dt, STEP * 8);
-    while (accumulator >= STEP && !run.ended) {
+    while (accumulator >= STEP && !run.ended && state === 'playing') {
       const previousDistance = run.distance;
-      updateRun(run, input, STEP);
-      if (shootHeld) fire();
-      updateEntities(STEP, run.distance, true, previousDistance);
+      if (raceAttempt) raceStep(input);
+      else {
+        updateRun(run, input, STEP);
+        if (shootHeld) fire();
+        updateEntities(STEP, run.distance, true, previousDistance);
+      }
       accumulator -= STEP;
     }
     while (run.events.length) { const event = run.events.pop(); notify(event === 'rail' ? 'CLIFF RIDER · +45 · +SKYFIRE' : `Silk spiral · +${90 * multiplier(run)} · +11 skyfire`, 1.2); if (event !== 'rail') sound.trick(); }
-    const nextZone = zoneAt(run.distance); if (nextZone !== lastZone) { lastZone = nextZone; banner(lastZone); }
+    const nextZone = zoneAt(run.distance); if (!raceAttempt && nextZone !== lastZone) { lastZone = nextZone; banner(lastZone); }
   }
   const distance = state === 'menu' ? menuDistance : run.distance;
   ensureChunks(distance, run.seed);
   // Refresh placement after streaming even if this display frame had no simulation step.
   updateEntities(0, distance, false); updateParticles(worldDt, distance); updateCarpet(worldDt, playing); updateTrails(worldDt, distance, playing); updateCamera(frozen ? 0 : dt);
+  raceView.update(raceAttempt); updateRaceUI();
   const weather = updateAtmosphere(worldDt, distance);
   blood.update(worldDt, distance); battle.render(worldDt, distance, globalTime);
   magic.update(worldDt, globalTime, distance, run, bullets, audioEnvironment, playing);
@@ -385,7 +458,7 @@ function frame(now) {
   uiClock += dt; if (uiClock >= .1) { updateUI(weather); uiClock = 0; }
   ink.render(scene, camera);
   if (firstFrame) { firstFrame = false; $('loading').style.opacity = '0'; setTimeout(() => $('loading').hidden = true, 650); }
-  if (playing && run.ended) { state = 'dying'; deathTime = .85; shootHeld = false; $('crosshair').hidden = true; sound.death(); blood.burst(run.x, run.altitude + 1, run.distance, 46); }
+  if (playing && !raceAttempt && run.ended) { state = 'dying'; deathTime = .85; shootHeld = false; $('crosshair').hidden = true; sound.death(); blood.burst(run.x, run.altitude + 1, run.distance, 46); }
   if (state === 'dying') { deathTime -= worldDt; carpet.body.rotation.z += (1 - deathTime / .85) * .6; if (deathTime <= 0) finish(); }
   requestAnimationFrame(frame);
 }
