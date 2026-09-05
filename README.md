@@ -27,7 +27,11 @@ Fireballs explode, splash nearby enemies and leave a burn. Lightning strikes ins
 
 Progression takes inspiration from [Soar](https://github.com/threapchills/soar): permanent weapon levels plus temporary, combinable boosts. Monsters drop loot; Rapid Fire and Fury last 10 seconds, Focus lasts 12 seconds, and Overdrive lasts 8 seconds. Repeat boosts refresh their timer. Spell crystals cap at level three; further duplicates grant Overdrive. The selected spell, level and remaining boost times appear in the HUD.
 
-The first boss arrives at 1,400 m, or after 16 monster kills. It follows the carpet while scenery continues moving; road obstacles and regular enemies clear for the fight. Destroy three orbiting ward sigils to expose its body. At half health, its wards return and attacks accelerate. Victory restores a heart, grants skyfire, Overdrive and loot, and schedules another boss 2,560 m later (or after another 16 kills). Road obstacles return beyond a 128 m grace distance.
+The first boss arrives at 1,400 m, or after 16 monster kills. Four encounters rotate: a cinder dragon, an exiled carpet vizier, an armored scarab and a sand wyrm. Starting HP is 24–32, with capped later increases; attacks arrive every 1.25–1.65 seconds and accelerate at half health. Only the scarab has wards: two fragile sigils, with no second shield phase. Bosses fly at their own world speed, alternating pursuit and charge bursts. Skimming and boosting can catch and pass them. Getting 85 m ahead ends the chase with a smaller escape reward; a distant or overlong encounter breaks off. Kills restore a heart and grant Overdrive and loot. Scenery hazards clear during encounters, then return after a 128 m grace distance.
+
+Biomes mix ground bandit hordes firing flaming arrows, archers on physical towers, strafing carpet mages with predictive aim, fire-fanning drakes, and legacy spirits and ogres. River fish leap once from the water in a targeted arc, with a splash cue. Mobile enemies can continue pursuing after their original scenery chunk disappears, with a ten-enemy pursuit cap. Projectiles keep their telegraphed aim, can approach from behind, and remain clearable with wind.
+
+Smooth terrain terraces vary elevation by up to 30 m. Adventure routes include 320 m cliff tunnels and caves, with a 58 m opening, a 32 m ceiling, advance warnings, colored crystals and warm local lighting. The flight height readout remains relative to the terrain. Leaves, sand and gusts sweep laterally through the world instead of inheriting the rider’s steering and climb. Projectiles and ghosts use brighter cores and shared soft halos; ink contours remain in the final render.
 
 Cliff rails begin at 640 m and recur every 2,560 m, alternating sides. Follow the glowing cliff edge at 6–46 m altitude: close skimming grants +18 m/s, skyfire and chain rewards. The outer obstacle lane clears along each rail. Rails are disabled in boss arenas.
 
@@ -53,11 +57,13 @@ The playable corridor is 108 m wide, with five winding safe-lane choices, a 54 m
 
 ## Hot-seat ghost races
 
-Choose **Race a friend** for two players taking turns on one keyboard. Easy (896 m) has broad gates and sparse obstacles, Medium (1,280 m) adds rooftop slaloms, and Hard (1,536 m) has tighter gates and dense canyon formations. Each difficulty has its own generated course and two local personal bests. Both players use identical layouts, flight rules, starting power and checkpoint rewards. Monsters and combat stay in the adventure mode.
+Choose **Race a friend** for two players taking turns on one keyboard. Easy (896 m) has broad gates and sparse obstacles, Medium (1,280 m) adds rooftop slaloms, and Hard (1,536 m) has tighter gates and dense canyon formations. Each difficulty has its own generated course and two local personal bests. Both players use identical layouts, flight rules, starting power and checkpoint rewards. Aim and cast in races to smash crates, urns and rocks; props reset for every attempt. Ghosts cannot be shot or collided with. Other biomes use timber, hay bales and ancient seals in adventure mode. Monsters and enclosed passages stay in adventure mode.
 
 The three-second countdown holds the carpet still. Fly through every checkpoint gate and the checkered finish ring; the HUD shows the next gate’s number, distance and height. W climbs, S descends, A/D steer, Shift boosts and Space rolls. Low flight and completed rolls build power; gates refill 12 power. Collisions or missed gates return you to the last checkpoint with a brief recovery while the timer keeps running. Attempts end after three minutes if unfinished.
 
 After finishing, pass the keyboard using **Pass to Player 2/1**, or retry with the same player. Only a faster completed run replaces that player’s ghost. Player 1 races Player 2’s rose ghost, and Player 2 races Player 1’s cyan ghost. Playback follows recorded positions by elapsed time, including resets, and never collides with the rider. Best times and their recordings persist in this browser when local storage is available. **New course** clears both players’ times only for the selected difficulty. Pause freezes the countdown, race clock and ghost.
+
+Race ambience continues through results, keyboard handoffs and pauses; M and the small sound button still mute everything. Recordings for the previous course version remain stored separately because breakable obstacles change the course rules.
 
 ## Develop
 

@@ -1,4 +1,5 @@
 import { CHUNK, ZONES, clamp, lerp, random, createRun, updateRun, obstacleExtents, intersectsObstacle } from './game.js';
+import { breakables } from './landscape.js';
 
 export const RACE_LEVELS = {
   easy: { name: 'Easy', length: 896, spacing: 224, radius: 13, density: .22, height: 12, spread: 20, zone: 1, description: 'Open gardens · broad gates · a few obstacles' },
@@ -34,7 +35,8 @@ export function generateRaceChunk(index, course) {
     if (Math.abs(o.x - routeAt(course, s).x) < ext.x + 9 || course.gates.some(g => Math.abs(g.s - s) < ext.s + 22)) continue;
     obstacles.push(o);
   }
-  return { index, start, zone: course.zone, safeLane: 0, disableRails: true, obstacles, pickups: [], enemies: [], rings: [] };
+  const props = start < course.length ? breakables(ZONES[course.zone].type, index, start, random(course.seed + index * 967 + 91)) : [];
+  return { index, start, zone: course.zone, safeLane: 0, disableRails: true, disablePassages: true, obstacles, pickups: [], enemies: [], rings: [], props: props.filter(p => Math.abs(p.x - routeAt(course, p.s).x) > 7 && !course.gates.some(g => Math.abs(g.s - p.s) < 25) && !obstacles.some(o => Math.abs(p.x - o.x) < 13 && Math.abs(p.s - o.s) < 15)) };
 }
 export function createAttempt(course, player, ghost = null) {
   const run = createRun(course.seed); run.power = 45; run.invulnerable = 0;
@@ -67,6 +69,7 @@ export function stepRace(a, input, dt) {
   const index = Math.floor(r.distance / CHUNK);
   for (let i = Math.max(0, index - 1); i <= index + 1; i++) {
     if (a.collisionChunks[i]?.obstacles.some(o => intersectsObstacle(r, o))) { resetAtGate(a); return 'crash'; }
+    if (a.collisionChunks[i]?.props.some(p => p.active && Math.abs(p.s - r.distance) < p.radius && Math.hypot(p.x - r.x, p.y - r.altitude) < p.radius + .6)) { resetAtGate(a); return 'crash'; }
   }
   const gate = a.course.gates[a.nextGate];
   if (gate && r.distance >= gate.s) {
@@ -100,7 +103,7 @@ export class RaceRecords {
     this.sessions = {};
     try {
       this.storage = storage || globalThis.localStorage;
-      const saved = JSON.parse(this.storage.getItem('mcw-races-v1'));
+      const saved = JSON.parse(this.storage.getItem('mcw-races-v2'));
       for (const level of Object.keys(RACE_LEVELS)) {
         const s = saved?.[level]; if (!s || !Number.isInteger(s.seed) || s.seed < 0 || s.seed > 0xffffffff || !Array.isArray(s.best)) continue;
         const course = createCourse(level, s.seed);
@@ -115,7 +118,7 @@ export class RaceRecords {
     if (!a.finished || a.dnf || s.seed !== a.course.seed || (old && a.elapsed >= old.time)) return false;
     s.best[a.player] = { time: a.elapsed, samples: a.samples.map(p => p.slice()) }; this.save(); return true;
   }
-  save() { try { this.storage.setItem('mcw-races-v1', JSON.stringify(this.sessions)); } catch { /* The match still works when storage is full or disabled. */ } }
+  save() { try { this.storage.setItem('mcw-races-v2', JSON.stringify(this.sessions)); } catch { /* The match still works when storage is full or disabled. */ } }
 }
 function validRecord(r, course) {
   if (!r || !Number.isFinite(r.time) || r.time <= 0 || r.time > RACE_LIMIT || !Array.isArray(r.samples) || r.samples.length < 2 || r.samples.length > 12000) return false;

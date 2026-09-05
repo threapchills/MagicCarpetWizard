@@ -90,7 +90,7 @@ test('application boots, flies, casts, rolls once per press, pauses, resumes and
     const seed = raceSnapshot().seed; advance(1); assert.equal(snapshot().distance, 0); assert.equal(raceSnapshot().elapsed, 0);
     elements.get('pause').onclick(); const countdown = raceSnapshot().countdown; advance(1); assert.equal(raceSnapshot().countdown, countdown);
     elements.get('resume').onclick(); advance(2.2); assert.ok(raceSnapshot().elapsed > 0);
-    elements.get('world').pointerdown({ button: 0, pointerId: 8, preventDefault() {} }); advance(.1); assert.equal(snapshot().shots, 0); dispatch('pointerup');
+    elements.get('world').pointerdown({ button: 0, pointerId: 8, preventDefault() {} }); advance(.1); assert.ok(snapshot().shots > 0); assert.equal(elements.get('crosshair').hidden, false); dispatch('pointerup');
     elements.get('pause').onclick(); const raceTime = raceSnapshot().elapsed; advance(.5); assert.equal(raceSnapshot().elapsed, raceTime);
     elements.get('pause-restart').onclick(); assert.equal(raceSnapshot().seed, seed); assert.equal(raceSnapshot().elapsed, 0); assert.equal(raceSnapshot().player, 0);
     advance(3.1);

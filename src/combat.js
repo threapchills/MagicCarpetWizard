@@ -24,11 +24,27 @@ export function damageFor(profile, enemy) {
     * (profile.kind === 'wind' && enemy.burn > 0 ? 1.5 : 1);
 }
 export function bossPhase(hp, maxHp) { return hp > maxHp * .5 ? 1 : 2; }
+export const BOSS_TYPES = [
+  { kind: 'dragon', name: 'AZRAKH · THE CINDER DRAGON', hp: 30, speed: 57, interval: 1.5, radius: 7, scale: 2.3 },
+  { kind: 'wizard', name: 'SAHIR · THE EXILED VIZIER', hp: 24, speed: 61, interval: 1.25, radius: 5, scale: 2.6 },
+  { kind: 'scarab', name: 'KHEPRI · THE IRON SWARM', hp: 32, speed: 51, interval: 1.65, radius: 7, scale: 3.2, wards: 2 },
+  { kind: 'serpent', name: 'NADIRA · THE SAND WYRM', hp: 28, speed: 55, interval: 1.4, radius: 6, scale: 3 },
+];
 export function makeBoss(number, distance) {
-  const hp = 82 + Math.min(4, number) * 22;
-  return { boss: true, number, name: ['AZRAKH · THE ASH DEVOURER', 'ZAHRA · QUEEN OF THE TEMPEST', 'MALIK · THE HOLLOW KING'][(number - 1) % 3],
-    x: 0, y: 22, s: distance + 95, hp, maxHp: hp, radius: 7, active: true, phase: 1,
-    age: 0, cooldown: 3, attack: 0, frozen: 0, burn: 0, stagger: 0, sigils: [], shield: true };
+  const type = BOSS_TYPES[(number - 1) % BOSS_TYPES.length], hp = type.hp + Math.min(6, Math.floor((number - 1) / 4) * 2);
+  return { ...type, boss: true, number, x: 0, y: 22, s: distance + 105, hp, maxHp: hp, active: true, phase: 1,
+    age: 0, cooldown: 1.1, attack: 0, frozen: 0, burn: 0, stagger: 0, sigils: [], shield: !!type.wards };
+}
+export function moveBoss(b, run, dt) {
+  b.age += dt;
+  const cycle = b.age % 5, charge = cycle > 3.9, rate = b.frozen ? .75 : 1;
+  // World speed is independent of the rider: boosts can pass it, while high flight loses ground.
+  b.speed = (BOSS_TYPES[(b.number - 1) % BOSS_TYPES.length].speed + (charge ? 25 : -5)) * rate;
+  b.s += b.speed * dt;
+  const x = b.kind === 'wizard' ? Math.sin(b.age * 1.9) * 36 : b.kind === 'serpent' ? Math.sin(b.age * .85) * 38 : clamp(run.x * .6 + Math.sin(b.age * .9) * 20, -42, 42);
+  const y = b.kind === 'serpent' ? 6 + Math.abs(Math.sin(b.age * .8)) * 27 : b.kind === 'scarab' ? 14 + Math.sin(b.age) * 7 : clamp(run.altitude + 7 + Math.sin(b.age * 1.4) * 10, 9, 43);
+  b.x += clamp(x - b.x, -22 * dt * rate, 22 * dt * rate); b.y += clamp(y - b.y, -15 * dt * rate, 15 * dt * rate);
+  b.charging = charge;
 }
 export function attackTargets(enemy, run, fan = false) {
   // Aim is captured when the warning starts, allowing the player to dodge it.

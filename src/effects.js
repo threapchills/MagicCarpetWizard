@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { placeOnWorld, mat } from './world.js';
+import { placeOnTerrain as placeOnWorld, mat } from './world.js';
 
 export class BloodRibbons {
   constructor(scene) { this.scene = scene; this.ribbons = []; this.point = new THREE.Object3D(); }

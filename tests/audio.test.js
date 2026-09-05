@@ -63,6 +63,14 @@ test('pause stops action voices and resume restores the user mix', async () => {
   assert.equal(h.sound.effects.voices.size, 0); assert.equal(h.sound.ambienceBus.gain.value, 0); assert.equal(h.sound.effectBus.gain.value, 0);
   h.sound.setPaused(false); assert.equal(h.sound.ambienceBus.gain.value, .85); assert.equal(h.sound.effectBus.gain.value, .8);
 });
+test('race ambience continues across handoffs and pauses while mute remains authoritative', async () => {
+  const h = setup(); await h.sound.start(); await flush(); h.sound.update(.3, { running: true, keepAmbience: true });
+  const voices = h.sound.ambient.voices.size; assert.ok(voices > 0);
+  h.sound.setPaused(true); h.sound.update(.3, { running: false, paused: true, keepAmbience: true });
+  assert.equal(h.sound.ambienceBus.gain.value, .85); assert.equal(h.sound.effectBus.gain.value, 0); assert.ok(h.sound.ambient.voices.size >= voices);
+  assert.match(h.sound.status(), /Ambience playing/); await h.sound.start(); assert.equal(h.sound.ambient.voices.size >= voices, true);
+  await h.sound.toggle(); assert.equal(h.sound.master.gain.value, 0); assert.equal(await h.sound.start(), false);
+});
 
 test('late unlock or sample downloads cannot resurrect audio after muting', async () => {
   const h = setup(); let unlock;

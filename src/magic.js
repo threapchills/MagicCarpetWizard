@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { random } from './game.js';
-import { placeOnWorld, mat } from './world.js';
+import { placeOnTerrain as placeOnWorld, mat } from './world.js';
 
 const spellColors = { fire: '#ff762d', storm: '#94dfff', wind: '#92ffcd' };
 

@@ -3,7 +3,7 @@ import { SampleEffects } from './sample-effects.js';
 
 export class Soundscape {
   constructor({ contextFactory, baseUrl, fetcher, storage } = {}) {
-    this.enabled = false; this.ctx = null; this.paused = false; this.ambient = null; this.effects = null; this.epoch = 0; this.error = false;
+    this.enabled = false; this.ctx = null; this.paused = false; this.keepAmbience = false; this.ambient = null; this.effects = null; this.epoch = 0; this.error = false;
     this.contextFactory = contextFactory || (() => new (window.AudioContext || window.webkitAudioContext)());
     this.baseUrl = baseUrl; this.fetcher = fetcher; this.environment = {};
     this.muted = false; this.ambienceVolume = .85; this.effectsVolume = .8;
@@ -57,7 +57,7 @@ export class Soundscape {
   }
   applyMix() {
     if (!this.ctx) return;
-    this.ambienceBus.gain.setTargetAtTime(this.paused ? 0 : this.ambienceVolume, this.ctx.currentTime, .10);
+    this.ambienceBus.gain.setTargetAtTime(this.paused && !this.keepAmbience ? 0 : this.ambienceVolume, this.ctx.currentTime, .10);
     this.effectBus.gain.setTargetAtTime(this.paused ? 0 : this.effectsVolume, this.ctx.currentTime, .04);
   }
   setVolume(kind, value) {
@@ -82,7 +82,7 @@ export class Soundscape {
     if (this.muted) return 'Sound muted · press M to enable';
     if (!this.enabled) return 'Sound starts when you take flight · M to preview';
     if (this.ctx?.state === 'suspended') return 'Audio waiting · press M to retry';
-    if (this.paused) return 'Sound paused with the game';
+    if (this.paused && !this.keepAmbience) return 'Sound paused with the game';
     if (!this.ambienceVolume) return 'Ambience volume is at zero';
     const audible = [...(this.ambient?.voices || [])].filter(v => v.asset === this.ambient.layers.get(v.role)?.asset).length;
     if (audible) return `Ambience playing · ${audible} active layers`;
@@ -91,8 +91,9 @@ export class Soundscape {
   }
   update(dt, environment) {
     this.environment = environment;
+    if (this.keepAmbience !== !!environment.keepAmbience) { this.keepAmbience = !!environment.keepAmbience; this.applyMix(); }
     if (!this.enabled || !this.ambient) return;
     if (this.paused !== !!environment.paused) this.setPaused(!!environment.paused);
-    if (!this.paused) this.ambient.update(dt, environment);
+    if (!this.paused || this.keepAmbience) this.ambient.update(dt, environment);
   }
 }

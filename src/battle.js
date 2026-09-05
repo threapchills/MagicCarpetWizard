@@ -1,9 +1,13 @@
 import * as THREE from 'three';
 import { RADIUS, SPELLS, clamp, lerp, award, multiplier, collectSpell, segmentHitsSphere } from './game.js';
-import { WEAPONS, weaponProfile, tickBuffs, damageFor, makeBoss, bossPhase, attackTargets } from './combat.js';
-import { mesh, mat, gem, orb, createEnemy, createPickup, placeOnWorld } from './world.js';
+import { WEAPONS, weaponProfile, tickBuffs, damageFor, makeBoss, moveBoss, bossPhase, attackTargets } from './combat.js';
+import { FOES, moveEnemy } from './foes.js';
+import { createHalo, glowCore } from './glow.js';
+import { elevationAt } from './landscape.js';
+import { mesh, mat, gem, orb, createEnemy, createPickup, placeOnTerrain as placeOnWorld } from './world.js';
 
 const hoop = new THREE.TorusGeometry(1, .055, 5, 36);
+const arrowShaft = new THREE.CylinderGeometry(.07, .07, 2.8, 5);
 const colors = { fire: '#ff6b25', storm: '#aeeaff', wind: '#b8ffe6' };
 
 export class Battle {
@@ -11,8 +15,10 @@ export class Battle {
     Object.assign(this, { scene, chunks, bullets, shots, hooks });
     this.fx = []; this.drops = []; this.boss = null; this.nextBoss = 1400; this.warning = false;
     this.shake = 0; this.killsAtBoss = 0; this.castPulse = 0; this.temp = new THREE.Vector3();
+    this.roamers = []; this.encounters = 0;
   }
   clear() {
+    for (const e of this.roamers) this.scene.remove(e.visual); this.roamers.length = 0; this.encounters = 0;
     for (const f of this.fx) { this.scene.remove(f.visual); f.geometry?.dispose(); }
     for (const p of this.drops) this.scene.remove(p.visual);
     if (this.boss) { this.scene.remove(this.boss.visual); this.boss.sigils.forEach(s => this.scene.remove(s.visual)); }
@@ -22,8 +28,15 @@ export class Battle {
   targets() {
     const list = [];
     for (const c of this.chunks.values()) for (const e of c.enemies) if (e.active && !this.boss) list.push(e);
+    for (const c of this.chunks.values()) for (const p of c.props || []) if (p.active && p.visual && !c.combatClear && !this.boss) list.push(p);
+    if (!this.boss) list.push(...this.roamers.filter(e => e.active));
     if (this.boss) list.push(...this.boss.sigils.filter(s => s.active), this.boss);
     return list;
+  }
+  retainEnemy(e, distance) {
+    if (this.boss || !e.active || !FOES[e.kind]?.mobile || e.s < distance - 35 || e.s > distance + 220) return false;
+    if (this.roamers.length >= 10) this.scene.remove(this.roamers.shift().visual);
+    this.roamers.push(e); return true;
   }
   lock(run, aim, camera) {
     let found = null, closest = .25;
@@ -79,6 +92,7 @@ export class Battle {
   kill(e, run) {
     if (!e.active) return;
     e.active = false; e.visual.visible = false; this.shake = Math.max(this.shake, e.boss ? 1.1 : .32);
+    if (e.destructible) { this.ring(e.x, e.y, e.s, '#ffc687', 6, .35); this.hooks.particles(e.x, e.y, e.s, '#d69c66', 18); this.hooks.sound.impact('fire'); award(run, 30, 4, false); return; }
     this.hooks.blood.burst(e.x, e.y, e.s, e.boss ? 60 : 30);
     this.ring(e.x, e.y, e.s, '#ff462a', e.boss ? 23 : 7, .55); this.hooks.sound.kill();
     if (e.sigil) { award(run, 80, 6); this.hooks.notify('WARD SIGIL SHATTERED', 1.1, 2); return; }
@@ -95,7 +109,7 @@ export class Battle {
     run.kills++; award(run, 180, 12);
     const loot = ['fire', 'rapid', 'storm', 'fury', 'wind', 'focus', 'frost', 'echo', 'ward', 'magnet'];
     this.drop(run.hp === 1 && run.kills % 3 === 0 ? 'ward' : loot[(run.kills - 1) % loot.length], e.x, e.y, e.s);
-    this.hooks.notify(`${e.kind === 'brute' ? 'BRUTE' : e.kind === 'hexer' ? 'HEXER' : 'STALKER'} SLAIN · +${180 * multiplier(run)}`, 1, 0);
+    this.hooks.notify(`${(FOES[e.kind]?.name || e.kind).toUpperCase()} SLAIN · +${180 * multiplier(run)}`, 1, 0);
   }
   hit(e, profile, run, scale = 1) {
     if (!e.active || e.boss && e.shield) return;
@@ -105,11 +119,11 @@ export class Battle {
     if (profile.frost) e.frozen = 1.2 + profile.frost * .35;
     if (profile.kind === 'wind') {
       e.stagger = e.boss ? .25 : 1.1;
-      if (!e.boss && !e.sigil) { e.pushS = Math.min(24, (e.pushS || 0) + 10); e.pushY = Math.min(10, (e.pushY || 0) + 3); }
+      if (!e.boss && !e.sigil && !e.destructible) { e.pushS = Math.min(24, (e.pushS || 0) + 10); e.pushY = Math.min(10, (e.pushY || 0) + 3); }
       if (e.burn > 0) this.ring(e.x, e.y, e.s, colors.fire, 9);
     }
     this.hooks.particles(e.x, e.y, e.s, colors[profile.kind], 8);
-    if (e.hp <= 0) this.kill(e, run); else if (!e.sigil) this.hooks.blood.burst(e.x, e.y, e.s, 3);
+    if (e.hp <= 0) this.kill(e, run); else if (!e.sigil && !e.destructible) this.hooks.blood.burst(e.x, e.y, e.s, 3);
   }
   fire(run, aim, camera) {
     if (run.shotCooldown > 0 || this.bullets.length >= 60) return;
@@ -121,7 +135,7 @@ export class Battle {
       const ray = new THREE.Vector3(aim.x, aim.y, .5).unproject(camera).sub(camera.position).normalize();
       const t = (-100 - camera.position.z) / Math.min(-.01, ray.z);
       const p = camera.position.clone().addScaledVector(ray, t);
-      endpoint = { x: clamp(p.x, -140, 140), y: clamp(p.y + 10000 / (2 * RADIUS), .3, 100), s: run.distance + 100 };
+      endpoint = { x: clamp(p.x, -140, 140), y: clamp(p.y + 10000 / (2 * RADIUS) - elevationAt(run.distance + 100), .3, 100), s: run.distance + 100 };
     }
     const source = { x: run.x, y: run.altitude + 1, s: run.distance + 2 };
     this.hooks.magic?.cast(source, profile.kind);
@@ -153,6 +167,8 @@ export class Battle {
       } else {
         for (let j = 0; j < 3; j++) mesh(hoop, j === 1 ? '#ffffff' : colors.wind, visual, [0, 0, j * 1.7], [profile.radius * (1 - j * .2), profile.radius * (1 - j * .2), 1], [0, 0, j], true);
       }
+      visual.traverse(o => { if (o.isMesh && o.material === mat('#ff531b', true)) o.material = glowCore('#ff722c'); });
+      visual.add(createHalo(profile.kind === 'fire' ? '#ff8d42' : '#66ffc5', profile.kind === 'fire' ? 7 : 12));
       this.bullets.push({ visual, ...source, vx: ((endpoint.x - source.x) / ds + spread) * profile.speed, vy: (endpoint.y - source.y) / ds * profile.speed,
         profile, speed: profile.speed, life: 1.25, trail: 0, hits: new Set(), pierce: profile.pierce });
     }
@@ -160,9 +176,17 @@ export class Battle {
   launch(enemy, targets, run, speed = 34) {
     for (const target of targets) {
       if (this.shots.length >= 64) break;
-      const arrival = Math.max(.4, (enemy.s - run.distance) / (run.speed + speed));
-      const visual = mesh(gem, enemy.boss ? '#ff542f' : '#f969a2', this.scene, [0, 0, 0], [.75, .75, 1.2], [0, 0, 0], true);
-      this.shots.push({ visual, x: enemy.x, y: enemy.y, s: enemy.s, vx: (target.x - enemy.x) / arrival, vy: (target.y - enemy.y) / arrival, speed, life: 5 });
+      const behind = enemy.s < run.distance, vs = behind ? 155 : -speed;
+      const arrival = Math.max(.35, Math.abs(enemy.s - run.distance) / Math.max(25, behind ? vs - run.speed : run.speed + speed));
+      const arrow = !!FOES[enemy.kind]?.arrow, gravity = arrow ? 9 : 0;
+      const visual = new THREE.Group(); this.scene.add(visual);
+      if (arrow) {
+        mesh(arrowShaft, '#402b2e', visual, [0, 0, 0], [1, 1, 1], [Math.PI / 2, 0, 0]);
+        mesh(gem, '#ffae39', visual, [0, 0, -1.5], [.25, .25, .65], [0, 0, 0], true);
+      } else mesh(gem, enemy.kind === 'wizard' ? '#ba8bff' : enemy.kind === 'scarab' ? '#a1ffb4' : '#ff6631', visual, [0, 0, 0], [.6, .6, 1.3], [0, 0, 0], true);
+      const tint = enemy.kind === 'wizard' ? '#c586ff' : enemy.kind === 'scarab' ? '#87ff9f' : '#ff7f32';
+      visual.children[visual.children.length - 1].material = glowCore(tint); visual.add(createHalo(tint, arrow ? 5 : 7));
+      this.shots.push({ visual, x: enemy.x, y: enemy.y, s: enemy.s, vx: (target.x - enemy.x) / arrival, vy: (target.y - enemy.y + .5 * gravity * arrival * arrival) / arrival, speed, vs, gravity, arrow, life: 5 });
     }
     this.ring(enemy.x, enemy.y, enemy.s, '#ff7359', enemy.boss ? 12 : 4);
   }
@@ -175,25 +199,29 @@ export class Battle {
   }
   updateEnemy(e, dt, distance, run, playing, time) {
     if (!e.active) return;
-    e.visual.visible = !this.boss;
-    if (this.boss) return;
-    if (playing) {
+    e.visual.visible = !this.boss && e.s - distance < 230 && e.s - distance > -75;
+    if (!e.visual.visible) return;
+    if (playing && e.s - distance < 230 && e.s - distance > -75) {
       this.status(e, dt, run); if (!e.active) return;
-      e.phase += dt * (e.frozen ? .2 : 1);
-      e.pushS = (e.pushS || 0) * Math.exp(-dt * 2); e.pushY = (e.pushY || 0) * Math.exp(-dt * 2);
-      const hunt = e.kind === 'stalker' && e.s - distance < 120 ? .48 : 0;
-      e.x = lerp(e.baseX, run.x, hunt) + Math.sin(e.phase) * 4;
-      e.y = lerp(e.baseY, run.altitude, hunt) + Math.sin(e.phase * 1.4) * 1.6 + e.pushY;
-      e.s = e.baseS + e.pushS;
+      const rule = FOES[e.kind] || FOES.stalker, leaping = e.leap != null;
+      moveEnemy(e, run, dt);
+      if (e.kind === 'fish' && !leaping && e.leap != null) this.ring(e.baseX, .25, e.baseS, '#b7ffff', 5, .6);
+      if (!e.active) { this.ring(e.x, .25, e.s, '#b7ffff', 4, .5); return; }
       const ahead = e.s - distance;
-      if (ahead > 12 && ahead < 165 && !e.stagger) {
+      if ((ahead > 8 || rule.mobile && ahead > -55) && ahead < 170 && !e.stagger && e.kind !== 'fish') {
         e.cooldown -= dt * (e.frozen ? .3 : 1);
-        if (e.cooldown < .9 && !e.aimTargets) e.aimTargets = attackTargets(e, run, e.kind === 'hexer');
-        if (e.cooldown <= 0) { this.launch(e, e.aimTargets || attackTargets(e, run), run, e.kind === 'brute' ? 43 : 34); e.aimTargets = null; e.cooldown = e.kind === 'hexer' ? 3.3 : 2.5; }
+        if (e.cooldown < rule.warning && !e.aimTargets) {
+          e.aimTargets = attackTargets(e, run, e.kind === 'hexer' || e.kind === 'dragon');
+          if (e.kind === 'wizard') for (const target of e.aimTargets) { target.x = clamp(target.x + run.vx * .25, -52, 52); target.y = clamp(target.y + run.vy * .2, 2, 52); }
+        }
+        if (e.cooldown <= 0) { this.launch(e, e.aimTargets || attackTargets(e, run), run, rule.speed); e.aimTargets = null; e.cooldown = rule.interval; }
       }
       if (Math.abs(ahead) < 2.5 && Math.hypot(e.x - run.x, e.y - run.altitude) < e.radius) this.hooks.hurt();
     }
     placeOnWorld(e.visual, e.x, e.s, e.y, distance); e.visual.rotation.z = Math.sin(time * 1.7 + e.phase) * .10;
+    if (e.kind === 'fish') { e.visual.visible = e.y > -.3; e.visual.rotation.x += e.leap == null ? 0 : (e.leap / 1.65 - .5) * 2; }
+    if (e.kind === 'guard' || e.kind === 'bandit') e.visual.rotation.z = 0;
+    for (const wing of e.visual.userData.limbs || []) wing.object.rotation.z = wing.side * Math.sin(time * 7 + e.phase) * .45;
     const feedback = e.visual.userData;
     feedback.health.scale.x = 1.8 * clamp(e.hp / e.maxHp, 0, 1); feedback.health.position.x = -.9 * (1 - e.hp / e.maxHp);
     feedback.frost.visible = e.frozen > 0; feedback.frost.rotation.y = time;
@@ -205,17 +233,27 @@ export class Battle {
   sigils(boss) {
     boss.sigils.forEach(s => this.scene.remove(s.visual));
     boss.sigils = [];
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < (boss.wards || 0); i++) {
       const visual = createPickup('storm'); visual.scale.setScalar(2); this.scene.add(visual);
-      boss.sigils.push({ sigil: true, active: true, hp: 7 + boss.phase * 2, maxHp: 7 + boss.phase * 2, x: 0, y: 0, s: boss.s, radius: 3, angle: i * Math.PI * 2 / 3, visual, frozen: 0, burn: 0 });
+      boss.sigils.push({ sigil: true, active: true, hp: 3, maxHp: 3, x: 0, y: 0, s: boss.s, radius: 3.5, angle: i * Math.PI * 2 / boss.wards, visual, frozen: 0, burn: 0 });
     }
-    boss.shield = true;
+    boss.shield = boss.sigils.length > 0;
   }
   startBoss(run) {
-    this.boss = makeBoss(run.bosses + 1, run.distance); const b = this.boss;
-    b.visual = createEnemy('boss'); this.scene.add(b.visual); b.visual.userData.health.visible = b.visual.userData.healthBack.visible = false;
+    this.boss = makeBoss(++this.encounters, run.distance); const b = this.boss;
+    b.visual = createEnemy(b.kind); b.visual.scale.setScalar(b.scale); this.scene.add(b.visual); b.visual.userData.health.visible = b.visual.userData.healthBack.visible = false;
+    for (const e of this.roamers) this.scene.remove(e.visual); this.roamers.length = 0;
     this.sigils(b); this.hooks.arena(true); this.shots.forEach(p => this.scene.remove(p.visual)); this.shots.length = 0;
-    this.hooks.notify(`${b.name} · BREAK THE THREE WARD SIGILS`, 5, 5); this.hooks.sound.roar(); this.shake = .5;
+    this.hooks.notify(`${b.name} · ${b.shield ? 'BREAK TWO WARDS' : 'ATTACK OR OUTRUN IT'}`, 4, 5); this.hooks.sound.roar(); this.shake = .5;
+  }
+  escapeBoss(run, outrun) {
+    const b = this.boss; if (!b) return;
+    this.scene.remove(b.visual); b.sigils.forEach(s => this.scene.remove(s.visual)); this.boss = null;
+    this.shots.forEach(p => this.scene.remove(p.visual)); this.shots.length = 0;
+    this.nextBoss = run.distance + 1800; this.killsAtBoss = run.kills; this.warning = false;
+    if (outrun) award(run, 350, 15);
+    this.hooks.notify(outrun ? 'BOSS OUTRUN · +350 · THE SKY IS YOURS' : 'THE HUNTER BREAKS AWAY · KEEP FLYING', 3, 5);
+    this.hooks.arena(false); this.hooks.bossUI(null);
   }
   updateBoss(dt, run) {
     const b = this.boss;
@@ -224,7 +262,8 @@ export class Battle {
       if (run.distance >= this.nextBoss || run.kills - this.killsAtBoss >= 16) this.startBoss(run);
       return;
     }
-    b.age += dt; b.x = Math.sin(b.age * .38) * 26; b.y = 21 + Math.sin(b.age * .53) * 10; b.s = run.distance + 90;
+    moveBoss(b, run, dt);
+    if (b.s < run.distance - 85 || b.s > run.distance + 310 || b.age > 35) { this.escapeBoss(run, b.s < run.distance - 85); return; }
     this.status(b, dt, run); if (!this.boss) return;
     for (const s of b.sigils) {
       if (!s.active) continue;
@@ -233,24 +272,31 @@ export class Battle {
     }
     b.shield = b.sigils.some(s => s.active);
     if (bossPhase(b.hp, b.maxHp) > b.phase) {
-      b.phase = 2; b.cooldown = 2.5; b.aimTargets = null; this.sigils(b);
-      this.hooks.notify('ENRAGED · WARDS REFORMED · DODGE THE SPREAD', 4, 5); this.hooks.sound.roar();
+      b.phase = 2; b.cooldown = Math.min(b.cooldown, .8); b.aimTargets = null;
+      this.hooks.notify('ENRAGED · FINISH IT OR BURN PAST', 2, 5); this.hooks.sound.roar();
     }
     if (!b.stagger) b.cooldown -= dt * (b.frozen ? .65 : 1);
-    if (b.cooldown < 1.15 && !b.aimTargets) {
-      b.aimTargets = attackTargets(b, run, b.attack % 2 === 0);
-      if (b.phase === 2 && b.attack % 2) b.aimTargets.push({ x: run.x - 14, y: clamp(run.altitude + 10, 2, 52) }, { x: run.x + 14, y: clamp(run.altitude - 10, 2, 52) });
-      this.hooks.notify(b.attack % 2 ? 'HEX VOLLEY · MOVE!' : 'FIRE FAN · WEAVE OR WIND BLAST', 1.1, 3);
+    if (b.cooldown < .65 && !b.aimTargets) {
+      b.aimTargets = attackTargets(b, run, b.kind === 'dragon' || b.kind === 'scarab');
+      if (b.kind === 'wizard') for (const target of b.aimTargets) { target.x = clamp(target.x + run.vx * .3, -52, 52); target.y = clamp(target.y + run.vy * .25, 2, 52); }
+      if (b.kind === 'serpent') b.aimTargets.push({ x: run.x, y: clamp(run.altitude + 12, 2, 52) }, { x: run.x, y: clamp(run.altitude - 12, 2, 52) });
+      this.hooks.notify(b.kind === 'dragon' ? 'DRAGONFIRE · WEAVE!' : b.kind === 'wizard' ? 'HEX MARKED · CHANGE DIRECTION!' : b.kind === 'scarab' ? 'SWARM VOLLEY · WIND BLAST!' : 'WYRM STRIKE · DODGE!', .8, 3);
     }
     if (b.cooldown <= 0) {
-      this.launch(b, b.aimTargets || attackTargets(b, run), run, b.phase === 2 ? 52 : 38);
-      b.attack++; b.cooldown = b.phase === 2 ? 2.05 : 2.9; b.aimTargets = null;
+      this.launch(b, b.aimTargets || attackTargets(b, run), run, b.phase === 2 ? 88 : 70);
+      b.attack++; b.cooldown = b.interval * (b.phase === 2 ? .73 : 1); b.aimTargets = null;
       if (b.attack % 3 === 0) this.drop(b.attack % 6 === 0 ? 'ward' : 'rapid', run.x, run.altitude, run.distance + 35);
     }
+    if (Math.abs(b.s - run.distance) < b.radius && Math.hypot(b.x - run.x, b.y - run.altitude) < b.radius && !run.roll) this.hooks.hurt();
     this.hooks.bossUI(b);
   }
-  update(dt, run, previousDistance) {
-    tickBuffs(run, dt); this.updateBoss(dt, run);
+  update(dt, run, previousDistance, race = false) {
+    tickBuffs(run, dt); if (!race) this.updateBoss(dt, run);
+    for (const c of this.chunks.values()) for (const p of c.props || []) if (p.active && p.burn) this.status(p, dt, run);
+    for (let i = this.roamers.length - 1; i >= 0; i--) {
+      const e = this.roamers[i]; this.updateEnemy(e, dt, run.distance, run, true, run.time);
+      if (!e.active || e.s < run.distance - 75 || e.s > run.distance + 240 || e.age > 16) { this.scene.remove(e.visual); this.roamers.splice(i, 1); }
+    }
     for (let i = this.bullets.length - 1; i >= 0; i--) {
       const b = this.bullets[i], from = { x: b.x, y: b.y, s: b.s }, p = b.profile;
       b.x += b.vx * dt; b.y += b.vy * dt; b.s += b.speed * dt; b.life -= dt; b.trail += dt;
@@ -277,11 +323,11 @@ export class Battle {
     }
     for (let i = this.shots.length - 1; i >= 0; i--) {
       const p = this.shots[i], from = { x: p.x, y: p.y, s: p.s - previousDistance };
-      p.s -= p.speed * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt;
+      p.s += (p.vs ?? -p.speed) * dt; p.x += p.vx * dt; p.y += p.vy * dt - .5 * (p.gravity || 0) * dt * dt; p.vy -= (p.gravity || 0) * dt; p.life -= dt;
       if (segmentHitsSphere(from, { x: p.x, y: p.y, s: p.s - run.distance }, { x: run.x, y: run.altitude, s: 0 }, 1.5)) {
         if (run.roll) { award(run, 35, 4); this.hooks.notify('SPELL SLIP · +SKYFIRE', 1); } else this.hooks.hurt(); p.life = 0;
       }
-      if (p.life <= 0 || p.s < run.distance - 10) { this.scene.remove(p.visual); this.shots.splice(i, 1); }
+      if (p.life <= 0 || p.s < run.distance - 110 || p.s > run.distance + 250 || p.y < -3) { this.scene.remove(p.visual); this.shots.splice(i, 1); }
     }
     for (let i = this.drops.length - 1; i >= 0; i--) {
       const p = this.drops[i], ahead = p.s - run.distance, d = Math.hypot(p.x - run.x, p.y - run.altitude, ahead);
@@ -293,6 +339,7 @@ export class Battle {
     }
   }
   render(dt, distance, time) {
+    for (const e of this.roamers) this.updateEnemy(e, 0, distance, {}, false, time);
     this.shake = Math.max(0, this.shake - dt * 2.5); this.castPulse = Math.max(0, this.castPulse - dt);
     for (let i = this.fx.length - 1; i >= 0; i--) {
       const f = this.fx[i]; f.life -= dt;
@@ -301,10 +348,11 @@ export class Battle {
       if (f.ring) f.visual.scale.setScalar(f.radius * (1 - f.life / f.maxLife) + .2);
     }
     for (const b of this.bullets) { placeOnWorld(b.visual, b.x, b.s, b.y, distance); b.visual.rotation.z = time * 9; }
-    for (const p of this.shots) { placeOnWorld(p.visual, p.x, p.s, p.y, distance); p.visual.rotation.z = time * 6; }
+    for (const p of this.shots) { placeOnWorld(p.visual, p.x, p.s, p.y, distance); p.visual.rotation.y = Math.atan2(-p.vx, p.vs ?? -p.speed); p.visual.rotation.x += Math.atan2(p.vy, Math.abs(p.vs ?? p.speed)); if (!p.arrow) p.visual.rotation.z = time * 6; }
     for (const p of this.drops) { placeOnWorld(p.visual, p.x, p.s, p.y, distance); p.visual.rotation.y = time * 2; }
     if (this.boss) {
       const b = this.boss; placeOnWorld(b.visual, b.x, b.s, b.y, distance); b.visual.rotation.z = Math.sin(time) * .07;
+      for (const wing of b.visual.userData.limbs || []) wing.object.rotation.z = wing.side * Math.sin(time * 6) * .4;
       b.visual.userData.charge.visible = b.shield || !!b.aimTargets;
       b.visual.userData.charge.scale.setScalar(b.shield ? 2.8 : 1.6 + Math.sin(time * 14) * .3);
       b.visual.userData.frost.visible = b.frozen > 0;

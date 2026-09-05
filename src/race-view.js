@@ -1,13 +1,15 @@
 import * as THREE from 'three';
-import { createCarpet, placeOnWorld } from './world.js';
+import { createCarpet, placeOnTerrain as placeOnWorld } from './world.js';
 import { ghostAt } from './race.js';
+import { createHalo } from './glow.js';
 
 export class RaceView {
   constructor(scene) {
     this.scene = scene; this.gates = [];
     this.ghost = createCarpet();
-    this.ghostMaterial = new THREE.MeshBasicMaterial({ color: '#89ffff', transparent: true, opacity: .42, depthWrite: false });
+    this.ghostMaterial = new THREE.MeshBasicMaterial({ color: '#89ffff', transparent: true, opacity: .65, depthWrite: false, fog: false });
     this.ghost.root.traverse(o => { if (o.isMesh) { o.material = this.ghostMaterial; o.castShadow = false; } });
+    this.ghostHalos = ['#ff66ae', '#46ffe7'].map(color => { const halo = createHalo(color, 13); halo.position.y = .5; this.ghost.root.add(halo); return halo; });
     this.ghost.root.visible = false; scene.add(this.ghost.root);
   }
   clear() {
@@ -15,7 +17,8 @@ export class RaceView {
     this.gates = []; this.ghost.root.visible = false;
   }
   start(course, player) {
-    this.clear(); this.ghostMaterial.color.set(player === 0 ? '#ff9fc7' : '#89ffff');
+    this.clear(); this.ghostMaterial.color.set(player === 0 ? '#ff66ae' : '#46ffe7').multiplyScalar(5);
+    this.ghostHalos.forEach((halo, i) => halo.visible = i === player);
     course.gates.forEach((gate, i) => {
       const g = new THREE.Group(), finish = i === course.gates.length - 1;
       const segments = finish ? 16 : 1;

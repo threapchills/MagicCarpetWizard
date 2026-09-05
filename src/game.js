@@ -1,3 +1,5 @@
+import { spawnEnemies } from './foes.js';
+import { breakables, passageAt } from './landscape.js';
 export const RADIUS = 680;
 export const CHUNK = 64;
 export const ZONE_LENGTH = CHUNK * 20;
@@ -109,12 +111,11 @@ export function generateChunk(index, seed) {
     const kinds = ['frost', 'storm', 'echo', 'fire', 'wind', 'magnet', 'ward', 'rapid', 'fury', 'focus'];
     pickups.push({ kind: kinds[Math.floor(rng() * kinds.length)], x: laneX, s: start + 40, y: 5.5 + rng() * 5 });
   }
-  if (index > 3 && index % 2 === 0) {
-    const count = 1 + (difficulty > .5 && rng() < .4 ? 1 : 0);
-    for (let i = 0; i < count; i++) enemies.push({ kind: ['stalker', 'brute', 'hexer'][index % 3], x: (rng() - .5) * 80, s: start + 16 + i * 23, y: 6 + rng() * 25, hp: 5 + Math.floor(difficulty * 2) + (index % 3 === 1 ? 4 : 0), phase: rng() * Math.PI * 2 });
-  }
+  enemies.push(...spawnEnemies(type, index, start, difficulty, rng, obstacles));
+  if (passageAt(start)) { obstacles.length = 0; enemies.length = 0; rings.length = 0; for (const p of pickups) { p.x *= .45; p.y = Math.min(p.y, 20); } }
   if (index % 4 === 2) rings.push({ x: laneX, s: start + 15, y: 10 + rng() * 13, radius: 5.2 });
-  return { index, start, zone, safeLane, obstacles, pickups, enemies, rings };
+  const props = breakables(type, index, start, random(seed + index * 967 + 91)).filter(p => !obstacles.some(o => Math.abs(p.x - o.x) < 13 && Math.abs(p.s - o.s) < 15) && Math.abs(p.x - laneX) > 7);
+  return { index, start, zone, safeLane, obstacles, pickups, enemies, rings, props };
 }
 export function obstacleExtents(obstacle) {
   const c = Math.abs(Math.cos(obstacle.angle || 0)), s = Math.abs(Math.sin(obstacle.angle || 0));
