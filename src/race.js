@@ -2,7 +2,7 @@ import { CHUNK, ZONES, clamp, lerp, random, createRun, updateRun, obstacleExtent
 import { breakables } from './landscape.js';
 
 export const RACE_LEVELS = {
-  easy: { name: 'Easy', length: 896, spacing: 224, radius: 13, density: .22, height: 12, spread: 20, zone: 1, description: 'Open gardens · broad gates · a few obstacles' },
+  easy: { name: 'Easy', length: 896, spacing: 224, radius: 40, gateBase: 14, density: .22, height: 12, spread: 20, zone: 1, description: 'Open gardens · giant forgiving gates · a few obstacles' },
   medium: { name: 'Medium', length: 1280, spacing: 256, radius: 10, density: .5, height: 23, spread: 32, zone: 0, description: 'Rooftop slalom · sharper turns · taller obstacles' },
   hard: { name: 'Hard', length: 1536, spacing: 192, radius: 8, density: .82, height: 35, spread: 39, zone: 3, description: 'Canyon sprint · tight gates · dense rock formations' },
 };
@@ -12,7 +12,8 @@ export function createCourse(level = 'easy', seed = 42) {
   if (!config) throw new Error('Unknown race difficulty');
   const rng = random(seed), gates = [];
   for (let s = config.spacing; s <= config.length; s += config.spacing) {
-    gates.push({ s, x: (rng() * 2 - 1) * config.spread, y: config.radius + 1 + rng() * (level === 'hard' ? 18 : 7), radius: config.radius });
+    // Keep Easy's centers low: enlarging the ring must also welcome ground skimming.
+    gates.push({ s, x: (rng() * 2 - 1) * config.spread, y: (config.gateBase ?? config.radius + 1) + rng() * (level === 'hard' ? 18 : 7), radius: config.radius });
   }
   return { ...config, level, seed: seed >>> 0, gates };
 }
