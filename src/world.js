@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { RADIUS, CHUNK, ZONES, random } from './game.js';
+import { RADIUS, CHUNK, ZONES, SPELLS, cliffRailAt, random } from './game.js';
 import { toonMaterial } from './toon.js';
 
 const materials = new Map();
+const mergedMaterials = new Map();
 export function mat(color, glow = false, surface = 'plaster') {
   const key = `${color}:${glow}:${surface}`;
   if (!materials.has(key)) materials.set(key, glow ? new THREE.MeshBasicMaterial({ color }) : toonMaterial(color, { surface }));
@@ -31,7 +32,18 @@ function mergeGroup(group) {
       positions.setY(i, Math.cos(angle) * radius - RADIUS); positions.setZ(i, Math.sin(angle) * radius);
     }
     g.computeVertexNormals();
-    const key = m.material.uuid; if (!sets.has(key)) sets.set(key, { mat: m.material, geos: [] }); sets.get(key).geos.push(g);
+    // Bake each object's linear pigment into vertex colors, then merge by
+    // surface instead of color. Dense groves cost a few draws per chunk.
+    const colors = new Float32Array(positions.count * 3), tint = m.material.color;
+    for (let i = 0; i < positions.count; i++) { colors[i * 3] = tint.r; colors[i * 3 + 1] = tint.g; colors[i * 3 + 2] = tint.b; }
+    g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    const key = `${m.material.type}:${m.material.map?.uuid || ''}:${m.material.side}`;
+    if (!mergedMaterials.has(key)) {
+      const material = m.material.isMeshBasicMaterial ? new THREE.MeshBasicMaterial({ color: '#ffffff', vertexColors: true }) : toonMaterial('#ffffff');
+      material.map = m.material.map; material.side = m.material.side; material.vertexColors = true;
+      mergedMaterials.set(key, material);
+    }
+    if (!sets.has(key)) sets.set(key, { mat: mergedMaterials.get(key), geos: [] }); sets.get(key).geos.push(g);
   } });
   const result = new THREE.Group();
   for (const { mat: material, geos } of sets.values()) { const geometry = mergeGeometries(geos, false); const m = new THREE.Mesh(geometry, material); m.castShadow = m.receiveShadow = true; result.add(m); geos.forEach(g => g.dispose()); }
@@ -83,6 +95,16 @@ function palm(parent, x, z, h, rng) {
   for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3 + rng() * .3; const leaf = mesh(orb, i % 2 ? '#477f69' : '#669773', g, [Math.cos(a) * 1.2 + .5, h + .15, Math.sin(a) * 1.2], [2.4, .17, .58], [0, -a, .18]); leaf.rotation.z = Math.cos(a) * .22; }
   mesh(orb, '#c4955e', g, [.4, h - .2, 0], [.48, .45, .48]);
 }
+function acacia(parent, x, z, height, rng) {
+  const y = -x * x / (2 * RADIUS);
+  mesh(cylinder, '#765542', parent, [x, y + height * .42, z], [.65, height * .84, .65], [0, 0, .12]);
+  for (const side of [-1, 1]) {
+    mesh(cylinder, '#765542', parent, [x + side * height * .13, y + height * .7, z], [.32, height * .45, .32], [0, 0, side * -.65]);
+    for (let layer = 0; layer < 3; layer++) mesh(orb, ['#3d7157', '#639160', '#87ab68'][layer], parent,
+      [x + side * height * .19 + (rng() - .5) * 2, y + height * (.82 + layer * .055), z + (rng() - .5) * 3],
+      [height * (.42 - layer * .055), height * .13, height * (.32 - layer * .04)]);
+  }
+}
 function rock(parent, x, z, w, h, color, rng) { mesh(gem, color, parent, [x, h * .35 - x * x / (2 * RADIUS), z], [w, h, w * .8], [0, rng() * 6.28, .1]); }
 function ruin(parent, x, z, h) {
   const y = -x * x / (2 * RADIUS);
@@ -132,7 +154,7 @@ function landmark(parent, type, side, rng) {
   }
 }
 
-export function createChunkVisual(data, seed) {
+export function createChunkVisual(data, seed, arena = false) {
   const rng = random(seed + data.index * 7919), g = new THREE.Group(), type = ZONES[data.zone].type;
   // Broad ground segments are curved across the planet's latitude.
   for (let x = -216; x <= 216; x += 12) {
@@ -148,6 +170,18 @@ export function createChunkVisual(data, seed) {
     block(g, '#52a6ad', center, .02 - center * center / (2 * RADIUS), -z - 4, 40 + Math.sin((data.start + z) / 130) * 8, .08, 9, angle);
   }
   for (const side of [-1, 1]) {
+    if (['city', 'palace', 'river', 'farm'].includes(type)) {
+      const lush = type === 'palace' || type === 'river' || type === 'farm';
+      for (let i = 0; i < (lush ? 7 : 3); i++) {
+        const x = side * (78 + rng() * 115), z = -rng() * CHUNK;
+        if (i % 3 === 0) acacia(g, x, z, 23 + rng() * 22, rng);
+        else palm(g, x, z, 14 + rng() * 17, rng);
+      }
+      for (let i = 0; i < 12; i++) {
+        const x = side * (64 + rng() * 95), z = -rng() * CHUNK, base = -x * x / (2 * RADIUS);
+        mesh(orb, i % 2 ? '#527e59' : '#7a9c64', g, [x, base + 1, z], [2 + rng() * 3, 1.5 + rng() * 2, 3]);
+      }
+    }
     if (type === 'city' || type === 'palace') {
       const count = 4 + Math.floor(rng() * 7);
       for (let j = 0; j < count; j++) {
@@ -175,7 +209,19 @@ export function createChunkVisual(data, seed) {
       for (let i = 0; i < 4; i++) rock(g, side * (90 + rng() * 95), -rng() * CHUNK, 7 + rng() * 10, 14 + rng() * 18, '#ad8b89', rng);
     }
   }
-  for (const o of data.obstacles) {
+  const rail = cliffRailAt(data.start);
+  if (rail && !arena) {
+    // The inner face stays at |x|=56, just outside the playable boundary.
+    // Low ledge stripes mark the wall that grants cliff-skimming speed.
+    for (let i = 0; i < 4; i++) {
+      const z = -8 - i * 16, x = rail.side * 68, base = -56 * 56 / (2 * RADIUS);
+      block(g, i % 2 ? '#a96857' : '#b87960', x, base + 23, z, 24, 46, 16.2);
+      for (const y of [7, 20, 34]) block(g, '#deb285', rail.side * 56.15, base + y, z, .25, .35, 16.2);
+      mesh(gem, '#9cf5dc', g, [rail.side * 55.7, base + 12, z], [.18, .4, .7], [0, 0, 0], true);
+      rock(g, rail.side * (77 + rng() * 12), z, 12, 52 + rng() * 20, '#ba8168', rng);
+    }
+  }
+  for (const o of arena ? [] : data.obstacles) {
     const body = new THREE.Group(); body.position.set(o.x, -o.x * o.x / (2 * RADIUS), -(o.s - data.start)); body.rotation.y = o.angle || 0; g.add(body);
     if (type === 'city' || type === 'palace' || type === 'farm') {
       block(body, rng() > .5 ? '#e8b380' : '#edc89b', 0, o.height / 2, 0, o.width, o.height, o.depth);
@@ -241,25 +287,39 @@ export function createPickup(kind) {
   const g = new THREE.Group();
   if (kind === 'gold') { mesh(gem, '#ffd88e', g, [0, 0, 0], [.34, .6, .34], [0, 0, .3], true); mesh(ring, '#eeb564', g, [0, 0, 0], [.55, .55, .55]); }
   else {
-    const colors = { fire: '#ff9d66', frost: '#9de4e9', storm: '#f9dd81', echo: '#cbb0fa', magnet: '#8fdbab', ward: '#a4d5ff' };
+    const colors = Object.fromEntries(Object.entries(SPELLS).map(([key, value]) => [key, value.color]));
     mesh(gem, colors[kind], g, [0, 0, 0], [.85, 1.2, .85], [0, .3, 0], true);
     mesh(ring, '#f8dfb0', g, [0, 0, 0], [1.5, 1.5, 1.5], [.3, .4, 0]);
     mesh(ring, colors[kind], g, [0, 0, 0], [1.35, 1.35, 1.35], [1.6, .2, 0]);
   }
   return g;
 }
-export function createEnemy() {
+export function createEnemy(kind = 'stalker') {
   const g = new THREE.Group();
-  mesh(orb, '#696083', g, [0, 0, 0], [.8, 1.05, .65]);
-  mesh(cone, '#5e587d', g, [0, -1.07, 0], [.6, 1.5, .5], [Math.PI, 0, .22]);
-  mesh(orb, '#927ca4', g, [0, .8, 0], [.59, .55, .53]);
-  for (const side of [-1, 1]) { mesh(orb, '#ffcd85', g, [side * .23, .82, .48], [.13, .09, .08], [0, 0, side * -.2], true); mesh(cone, '#ddae7f', g, [side * .4, 1.37, 0], [.18, .7, .18], [0, 0, side * -.3]); mesh(orb, '#7d7098', g, [side * 1.1, .2, 0], [.6, .2, .34], [0, 0, side * -.3]); }
-  mesh(ring, '#b6a1be', g, [0, -.5, 0], [1.05, 1.05, 1.05], [Math.PI / 2, 0, 0]);
+  const skin = kind === 'hexer' ? '#373050' : kind === 'brute' ? '#652c35' : '#282b3d';
+  const glow = kind === 'hexer' ? '#b48bff' : '#ff4c24';
+  mesh(orb, skin, g, [0, 0, 0], [1.05, 1.3, .75]);
+  mesh(cone, '#211f32', g, [0, -1.3, 0], [.9, 2, .6], [Math.PI, 0, .22]);
+  mesh(gem, '#d0b690', g, [0, .95, .3], [.74, .7, .54]);
+  mesh(orb, '#1a1423', g, [0, .62, .76], [.4, .28, .12]);
+  for (let i = -2; i <= 2; i++) mesh(cone, '#fff1c6', g, [i * .13, .73, .85], [.065, .26, .055], [Math.PI, 0, 0]);
+  for (const side of [-1, 1]) {
+    mesh(orb, glow, g, [side * .29, 1.04, .74], [.22, .10, .10], [0, 0, side * -.35], true);
+    mesh(cone, '#211c2c', g, [side * .6, 1.75, 0], [.28, 1.6, .26], [0, 0, side * -.5]);
+    mesh(orb, skin, g, [side * 1.45, .15, .15], [.8, .3, .4], [0, 0, side * -.4]);
+    for (let finger = 0; finger < 3; finger++) mesh(cone, '#d7bd94', g, [side * (1.85 + finger * .12), -.38, .25 + finger * .24], [.12, .95, .12], [Math.PI, 0, side * .3]);
+    if (kind === 'stalker' || kind === 'boss') mesh(cone, skin, g, [side * 2, .4, -.35], [1.5, 2.5, .12], [0, 0, side * -.95]);
+    for (let rib = 0; rib < 3; rib++) mesh(box, '#9b735f', g, [side * .42, .2 - rib * .3, .71], [.68, .10, .12], [0, 0, side * .18]);
+  }
+  mesh(gem, glow, g, [0, -.15, .83], [.23, .4, .17], [0, 0, 0], true);
   const healthBack = block(g, '#413b59', 0, 2.05, 0, 1.9, .13, .1);
   const health = block(g, '#f2bf83', 0, 2.05, .065, 1.8, .09, .03);
   const charge = mesh(ring, '#ffb2cd', g, [0, .2, .7], [1.5, 1.5, 1.5], [0, 0, 0], true); charge.visible = false;
   const frost = mesh(ring, '#b8f2f2', g, [0, .1, 0], [1.55, 1.55, 1.55], [.5, 0, 0], true); frost.visible = false;
-  g.userData = { health, healthBack, charge, frost };
+  const burn = new THREE.Group(); g.add(burn); burn.visible = false;
+  for (let i = 0; i < 3; i++) mesh(cone, i === 1 ? '#ffe29a' : '#ff6324', burn, [Math.sin(i * 2.1) * .8, -.3, Math.cos(i * 2.1) * .8], [.3, 1.7, .3], [0, 0, .2], true);
+  g.userData = { health, healthBack, charge, frost, burn, baseScale: kind === 'boss' ? 4.4 : kind === 'brute' ? 1.65 : 1.25 };
+  g.scale.setScalar(g.userData.baseScale);
   return g;
 }
 export function createRing(radius) {

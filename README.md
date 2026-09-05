@@ -11,6 +11,8 @@ Fly at **https://threapchills.github.io/MagicCarpetWizard/** once GitHub Pages d
 | W / S (or up / down) | Climb / descend |
 | A / D (or left / right) | Steer |
 | Mouse + hold left click | Aim and cast spells |
+| 1 / 2 / 3 | Fireball / Lightning / Wind blast |
+| Q | Cycle spells |
 | Tap Space | Barrel roll above 4 m; dodge enemy projectiles during the roll |
 | Hold Shift | Skyfire boost (25 power to start) |
 | Esc / P | Pause / resume |
@@ -19,7 +21,15 @@ Fly at **https://threapchills.github.io/MagicCarpetWizard/** once GitHub Pages d
 
 Skimming below 3.5 m gives speed and power. Roll, thread golden rings, narrowly avoid obstacles, and defeat spirits to build a scoring chain and refill skyfire. Gold wisps extend an existing chain and curve toward the next clear lane. Boost maintains speed at any altitude, but drains power. A run ends after three hits. Ward crystals heal and briefly shield you. Each roll needs a fresh key press; a collision cancels its reward. Near misses score after clearing an obstacle.
 
-Spirits show health bars and a pink charging ring before casting. The aiming reticle turns gold over a target and flashes on hits. Follow your twin silk trails through rolls and boosted flight. The journey meter shows the distance to the next zone; each zone has its own larger architectural landmarks.
+Horned stalkers track your flight, armored brutes fire faster projectiles, and hexers cast spread volleys. Charge rings warn before shots fire; the aim is locked during the warning so you can dodge. The reticle turns gold over a target and flashes on hits. Follow your twin silk trails through rolls and boosted flight.
+
+Fireballs explode, splash nearby enemies and leave a burn. Lightning strikes instantly and chains with diminishing damage. Wind blasts sweep away hostile shots, stagger and shove monsters, and deal bonus damage to burning targets. Frost empowers fire shatters; Echo adds projectiles or lightning jumps. All three weapons are available from the start.
+
+Progression takes inspiration from [Soar](https://github.com/threapchills/soar): permanent weapon levels plus temporary, combinable boosts. Monsters drop loot; Rapid Fire and Fury last 10 seconds, Focus lasts 12 seconds, and Overdrive lasts 8 seconds. Repeat boosts refresh their timer. Spell crystals cap at level three; further duplicates grant Overdrive. The selected spell, level and remaining boost times appear in the HUD.
+
+The first boss arrives at 1,400 m, or after 16 monster kills. It follows the carpet while scenery continues moving; road obstacles and regular enemies clear for the fight. Destroy three orbiting ward sigils to expose its body. At half health, its wards return and attacks accelerate. Victory restores a heart, grants skyfire, Overdrive and loot, and schedules another boss 2,560 m later (or after another 16 kills). Road obstacles return beyond a 128 m grace distance.
+
+Cliff rails begin at 640 m and recur every 2,560 m, alternating sides. Follow the glowing cliff edge at 6–46 m altitude: close skimming grants +18 m/s, skyfire and chain rewards. The outer obstacle lane clears along each rail. Rails are disabled in boss arenas.
 
 The reticle has a white core, black contour, and glow for visibility against light and dark scenes. Firing captures the mouse pointer and disables text selection during play. W climbs and S descends; the altitude display indicates the direction. Monster kills and player death scatter stylized red 3D ribbons.
 
@@ -29,7 +39,9 @@ The world quantizes combined sunlight, ambient fill and cast shadows into three 
 
 There is **no background music**. The background is an emergent mix of nine sound excerpts from the user-supplied Slumbr app. Air, land and dream layers overlap in 9–13 second phrases, varying sample offsets, playback rate, stereo placement and filtering. Zone, height, speed, night, rain and sand weather steer the mix. Sources load only after sound is enabled, with a bounded decoded-buffer cache and voice count. Pausing or leaving the window fades the ambience down. Short synthesized action effects remain separate from the ambient layer. Press M or the wave button to enable sound.
 
-Spell crystals stack up to three levels. Ember increases damage; Frost slows spirits and enables fire shatters; Storm chains hits to nearby foes; Echo adds bolts; Charm attracts pickups. All collected effects combine automatically. Score multipliers cap at 8×.
+Giant acacias, tall palms and dense shrubs fill the greener zones. Swirling leaves, curved wind streaks, slanted rain and sand particles use fixed pools. Weather evolves in 24-second phrases; dry biomes turn rain into sandstorms, and thunderstorms bring darker skies, distant flashes and thunder. Wind strength also steers the Slumbr ambience mix. Score multipliers cap at 8×.
+
+A quiet [Ko-fi link](https://ko-fi.com/threapchills), matching the destination in Slumbr, appears only on the title screen. It is a plain link without an embedded widget.
 
 Seven procedural zones advance every 1,280 m: the Amber City, Sultan’s Gardens, Saffron Sea, Singing Canyons, River of Stars, Emerald Fields, and Ancestors’ Reach. The cycle repeats with capped difficulty scaling. Day and night cycle independently of procedural rain, wind and sand weather. Each new run has a new seed. Best distance and score are saved locally in the browser.
 
@@ -46,7 +58,7 @@ npm test
 npm run build
 ```
 
-Built with Three.js and Vite. Models, scenery, particles, sky and action effects are generated in code. Slumbr ambience is served from this site's own `audio/slumbr/` folder; source labels and preparation details are recorded there. No API keys are needed. Optional Google Fonts fall back to system fonts if unavailable. Geometry is merged per chunk/material, chunks are recycled, and particle/projectile counts are bounded. Spark particles use one instanced draw call. Flight and combat run at a fixed 90 Hz, with swept projectile collision checks and bounded catch-up after slow frames.
+Built with Three.js and Vite. Models, scenery, particles, sky and action effects are generated in code. Slumbr ambience is served from this site's own `audio/slumbr/` folder; source labels and preparation details are recorded there. No API keys are needed. Optional Google Fonts fall back to system fonts if unavailable. Scenery bakes pigment into vertex colors and merges by surface, retaining at most four draws per chunk. Chunks, combat effects, loot and projectiles are bounded; temporary lightning geometry is disposed when its arc expires. Flight and combat run at a fixed 90 Hz, with swept projectile collision checks and bounded catch-up after slow frames.
 
 ## GitHub Pages
 
@@ -62,6 +74,11 @@ In repository **Settings → Pages → Build and deployment**, set **Source** to
 - `src/toon.js`: combined-light cel shader and procedural pigment textures.
 - `src/ink.js`: screen-space black contours with distance fading.
 - `src/effects.js`: bounded toon blood ribbons.
+- `src/combat.js`: weapon profiles, timed boosts and boss rules.
+- `src/battle.js`: casts, impacts, monsters, loot and moving boss encounters.
+- `src/weather.js`: biome weather, swirling foliage, rain, sand and wind fields.
+- `tests/combat.test.js`: real cast impacts, combinations, boss phases and aimed victories across simulation rates.
+- `tests/weather.test.js`: weather budgets and cliff-skimming rules.
 - `tests/game.test.js`: deterministic generation, flight, balance and long-run checks.
 - `tests/world.test.js`: geometry and spherical placement for all seven zones.
 - `tests/runtime.test.js`: actual application loop, controls, combat input, pause/help and restart with a mocked DOM and GPU (not a browser visual test).

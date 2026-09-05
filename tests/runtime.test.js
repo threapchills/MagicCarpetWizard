@@ -44,8 +44,9 @@ test('application boots, flies, casts, rolls once per press, pauses, resumes and
       .replace("from 'three'", `from '${import.meta.resolve('three')}'`)
       .replace(/from '(\.\/[^']+)'/g, (_, path) => `from '${new URL('../src/' + path.slice(2), import.meta.url).href}'`)
       .replace('new THREE.WebGLRenderer(', 'new globalThis.__TestRenderer(');
-    source += '\nexport const snapshot = () => ({ state, distance: run.distance, altitude: run.altitude, tricks: run.tricks, shots: bullets.length, chunks: chunks.size, particles: particles.length, hp: run.hp });';
-    const { snapshot } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
+    source += '\nexport const snapshot = () => ({ state, distance: run.distance, altitude: run.altitude, tricks: run.tricks, shots: bullets.length, chunks: chunks.size, particles: particles.length, hp: run.hp, weapon: run.weapon, boss: !!battle.boss, bossAge: battle.boss?.age, arenaClear: [...chunks.values()].every(c => c.combatClear), buff: run.buffs.rapid });';
+    source += '\nexport const enterBoss = () => { run.distance = 1400; run.invulnerable = 999; run.buffs.rapid = 10; ensureChunks(run.distance, run.seed); };';
+    const { snapshot, enterBoss } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
     advance(.1); assert.equal(snapshot().state, 'menu');
     elements.get('start').onclick(); dispatch('keydown', { code: 'KeyW' }); advance(2.1); dispatch('keyup', { code: 'KeyW' });
     assert.equal(snapshot().state, 'playing'); assert.ok(snapshot().altitude > 20); assert.ok(snapshot().distance > 45);
@@ -69,6 +70,15 @@ test('application boots, flies, casts, rolls once per press, pauses, resumes and
     if (snapshot().state === 'ended') { assert.equal(elements.get('end-screen').hidden, false); elements.get('restart').onclick(); }
     dispatch('blur'); assert.equal(snapshot().state, 'paused');
     elements.get('pause-restart').onclick(); assert.equal(snapshot().state, 'playing'); assert.equal(snapshot().distance, 0); assert.equal(snapshot().hp, 3); assert.equal(snapshot().shots, 0);
+    dispatch('keydown', { code: 'Digit2' }); assert.equal(snapshot().weapon, 'storm');
+    dispatch('keydown', { code: 'Digit3' }); assert.equal(snapshot().weapon, 'wind');
+    dispatch('keydown', { code: 'KeyQ' }); assert.equal(snapshot().weapon, 'fire');
+    enterBoss(); advance(.2); assert.equal(snapshot().boss, true); assert.equal(snapshot().arenaClear, true); assert.equal(elements.get('boss-hud').hidden, false);
+    elements.get('pause').onclick(); const bossAge = snapshot().bossAge, buff = snapshot().buff; advance(2);
+    assert.equal(snapshot().bossAge, bossAge); assert.equal(snapshot().buff, buff);
+    elements.get('resume').onclick(); advance(2); assert.ok(snapshot().bossAge > bossAge);
+    elements.get('pause').onclick(); elements.get('pause-restart').onclick();
+    assert.equal(snapshot().boss, false); assert.equal(snapshot().arenaClear, false); assert.equal(snapshot().buff, 0); assert.equal(elements.get('boss-hud').hidden, true);
     advance(.1); assert.ok(renders > 1000);
   } finally {
     for (const [key, descriptor] of oldGlobals) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else delete globalThis[key]; }

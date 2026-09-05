@@ -14,12 +14,17 @@ export const ZONES = [
   { name: 'The Ancestors’ Reach', subtitle: 'Old magic. New horizons.', ground: '#c49186', sky: '#b9b7d1', fog: '#c2a5b3', accent: '#aa89ba', type: 'ancient' },
 ];
 export const SPELLS = {
-  fire: { name: 'Ember', glyph: '♨', color: '#ffac6d', description: 'Ember · stronger flame, wider impact' },
+  fire: { name: 'Fireball', glyph: '♨', color: '#ffac6d', description: 'Fireball · explosive splash and lingering burns' },
   frost: { name: 'Frost', glyph: '❄', color: '#9ce8ed', description: 'Frost · slows enemies; fire shatters frozen foes' },
   storm: { name: 'Storm', glyph: 'ϟ', color: '#edda86', description: 'Storm · lightning jumps between enemies' },
   echo: { name: 'Echo', glyph: '✧', color: '#d4b6ff', description: 'Echo · extra spell bolts' },
   magnet: { name: 'Charm', glyph: '◎', color: '#8ae0b4', description: 'Charm · draws gold and power toward you' },
   ward: { name: 'Ward', glyph: '◇', color: '#99ddff', description: 'Ward · restores a heart and shields you briefly' },
+  wind: { name: 'Wind blast', glyph: '≋', color: '#a6ffdd', description: 'Wind blast · shove monsters, clear hostile spells, fan flames' },
+  rapid: { name: 'Rapid fire', glyph: '»', color: '#ff9ce3', description: 'Rapid Fire · faster casting for 10 seconds' },
+  fury: { name: 'Fury', glyph: '✹', color: '#ff7845', description: 'Fury · stronger spells and wider blasts for 10 seconds' },
+  focus: { name: 'Focus', glyph: '⊕', color: '#c0ff9f', description: 'Focus · tighter volleys and piercing fireballs for 12 seconds' },
+  overdrive: { name: 'Overdrive', glyph: '✷', color: '#e4b0ff', description: 'Overdrive · extra projectiles and damage for 8 seconds' },
 };
 export const clamp = (x, min, max) => Math.min(max, Math.max(min, x));
 export const lerp = (a, b, t) => a + (b - a) * t;
@@ -27,11 +32,24 @@ export function random(seed) { let n = seed >>> 0; return () => { n += 0x6D2B79F
 export function zoneAt(distance) { return Math.floor(Math.max(0, distance) / ZONE_LENGTH) % ZONES.length; }
 export function difficultyAt(distance) { return Math.min(3, Math.max(0, distance) / 6400); }
 export function flightSpeed(altitude, boosting, difficulty = 0) { return (boosting ? 102 : 40 + 36 * Math.exp(-Math.max(0, altitude - 1) / 7)) + difficulty * 3; }
-export function createRun(seed = 42) { return { seed, distance: 0, time: 0, x: 0, altitude: 3.5, vx: 0, vy: 0, speed: 30, power: 25, hp: 3, score: 0, chain: 0, chainTimer: 0, bestChain: 1, invulnerable: 2.5, boost: false, roll: 0, rollHeld: false, rollCooldown: 0, rollDirection: 1, shotCooldown: 0, spells: { fire: 1, frost: 0, storm: 0, echo: 0, magnet: 0 }, kills: 0, nearMisses: 0, tricks: 0, ended: false, events: [] }; }
+export function createRun(seed = 42) { return { seed, distance: 0, time: 0, x: 0, altitude: 3.5, vx: 0, vy: 0, speed: 30, power: 25, hp: 3, score: 0, chain: 0, chainTimer: 0, bestChain: 1, invulnerable: 2.5, boost: false, roll: 0, rollHeld: false, rollCooldown: 0, rollDirection: 1, shotCooldown: 0, weapon: 'fire', buffs: { rapid: 0, fury: 0, focus: 0, overdrive: 0 }, bosses: 0, spells: { fire: 1, frost: 0, storm: 1, wind: 1, echo: 0, magnet: 0 }, kills: 0, nearMisses: 0, tricks: 0, ended: false, events: [] }; }
 export function multiplier(run) { return Math.min(8, 1 + Math.floor(run.chain / 3)); }
 export function award(run, points, power = 0, chain = true) { if (chain) { run.chain++; run.chainTimer = 5; } run.score += Math.round(points * multiplier(run)); run.power = clamp(run.power + power, 0, 100); run.bestChain = Math.max(run.bestChain, multiplier(run)); }
-export function collectSpell(run, kind) { if (kind === 'ward') { run.hp = Math.min(3, run.hp + 1); run.invulnerable = Math.max(run.invulnerable, 5); } else { run.spells[kind] = Math.min(3, (run.spells[kind] || 0) + 1); } award(run, 100, 12); }
+export function collectSpell(run, kind) {
+  if (!SPELLS[kind]) return;
+  if (kind === 'ward') { run.hp = Math.min(3, run.hp + 1); run.invulnerable = Math.max(run.invulnerable, 5); }
+  else if (kind in run.buffs) run.buffs[kind] = kind === 'focus' ? 12 : kind === 'overdrive' ? 8 : 10;
+  else if (run.spells[kind] >= 3) run.buffs.overdrive = 8;
+  else run.spells[kind] = Math.min(3, (run.spells[kind] || 0) + 1);
+  award(run, 100, 12);
+}
 export function damage(run) { if (run.invulnerable > 0 || run.ended) return false; run.hp--; run.invulnerable = 2; run.chain = 0; run.chainTimer = 0; run.roll = 0; run.power = Math.max(0, run.power - 15); if (run.hp <= 0) run.ended = true; return true; }
+export function cliffRailAt(distance) {
+  const index = Math.floor(Math.max(0, distance) / CHUNK), local = index % 40;
+  if (local < 10 || local > 16) return null;
+  const side = Math.floor(index / 40) % 2 ? -1 : 1;
+  return { side, edge: side * 56, height: 48 };
+}
 export function updateRun(run, input, dt) {
   if (run.ended) return;
   dt = clamp(dt, 0, .05); run.time += dt;
@@ -45,10 +63,14 @@ export function updateRun(run, input, dt) {
   run.rollHeld = !!input.roll;
   if (run.roll > 0) { run.roll = Math.max(0, run.roll - dt); if (run.roll === 0 && run.altitude >= 4) { award(run, 90, 11); run.tricks++; run.events.push('roll'); } }
   run.boost = !!input.boost && (run.boost ? run.power > 0 : run.power >= 25);
-  const rate = run.boost ? -15 : run.altitude < 3.5 ? 4.5 : .3;
+  const rail = input.arena ? null : cliffRailAt(run.distance);
+  run.railing = !!rail && Math.abs(run.x - rail.edge) < 6 && run.altitude > 5 && run.altitude < rail.height - 2;
+  run.railClock = run.railing ? (run.railClock || 0) + dt : 0;
+  if (run.railClock >= 1) { run.railClock -= 1; award(run, 45, 5); run.events.push('rail'); }
+  const rate = run.boost ? -15 : run.railing ? 8 : run.altitude < 3.5 ? 4.5 : .3;
   run.power = clamp(run.power + rate * dt, 0, 100);
   const dive = Math.max(0, -run.vy) * .35;
-  run.speed = lerp(run.speed, flightSpeed(run.altitude, run.boost, difficultyAt(run.distance)) + dive, 1 - Math.exp(-5 * dt));
+  run.speed = lerp(run.speed, flightSpeed(run.altitude, run.boost, difficultyAt(run.distance)) + dive + (run.railing ? 18 : 0), 1 - Math.exp(-5 * dt));
   run.distance += run.speed * dt; run.score += run.speed * dt * .2;
   run.chainTimer = Math.max(0, run.chainTimer - dt); if (!run.chainTimer) run.chain = 0;
 }
@@ -69,11 +91,11 @@ export function generateChunk(index, seed) {
   const rng = random(seed + index * 104729), start = index * CHUNK;
   const zone = zoneAt(start), difficulty = difficultyAt(start), type = ZONES[zone].type;
   const obstacles = [], pickups = [], enemies = [], rings = [];
-  const safeLane = safeLaneAt(index, seed);
+  const safeLane = safeLaneAt(index, seed), rail = cliffRailAt(start);
   // Every row leaves a full flight lane clear. Outer architecture is decoration.
   if (index > 1) {
     for (let lane = -2; lane <= 2; lane++) {
-      if (lane === safeLane || rng() > .58 + difficulty * .09) continue;
+      if (lane === safeLane || (rail && lane === rail.side * 2) || rng() > .58 + difficulty * .09) continue;
       obstacles.push({ x: lane * LANE_SPACING + (rng() - .5) * 3, s: start + 42 + (rng() - .5) * 8, width: 8 + rng() * 6, height: 7 + rng() * (type === 'canyon' ? 25 : 21), depth: 8 + rng() * 7, angle: (rng() - .5) * 1.4, type });
     }
   }
@@ -84,12 +106,12 @@ export function generateChunk(index, seed) {
     pickups.push({ kind: 'gold', x: lerp(previousX, laneX, ease) + Math.sin(index + i * .7) * .9, s: start + 6 + i * 7, y: 2.3 + (index % 5 === 0 ? Math.sin(i / 7 * Math.PI) * 9 : 0) });
   }
   if (index > 2 && index % 3 === 0) {
-    const kinds = ['frost', 'storm', 'echo', 'fire', 'magnet', 'ward'];
+    const kinds = ['frost', 'storm', 'echo', 'fire', 'wind', 'magnet', 'ward', 'rapid', 'fury', 'focus'];
     pickups.push({ kind: kinds[Math.floor(rng() * kinds.length)], x: laneX, s: start + 40, y: 5.5 + rng() * 5 });
   }
   if (index > 3 && index % 2 === 0) {
     const count = 1 + (difficulty > .5 && rng() < .4 ? 1 : 0);
-    for (let i = 0; i < count; i++) enemies.push({ x: (rng() - .5) * 88, s: start + 16 + i * 23, y: 6 + rng() * 25, hp: 2 + Math.floor(difficulty * 1.3), phase: rng() * Math.PI * 2 });
+    for (let i = 0; i < count; i++) enemies.push({ kind: ['stalker', 'brute', 'hexer'][index % 3], x: (rng() - .5) * 80, s: start + 16 + i * 23, y: 6 + rng() * 25, hp: 5 + Math.floor(difficulty * 2) + (index % 3 === 1 ? 4 : 0), phase: rng() * Math.PI * 2 });
   }
   if (index % 4 === 2) rings.push({ x: laneX, s: start + 15, y: 10 + rng() * 13, radius: 5.2 });
   return { index, start, zone, safeLane, obstacles, pickups, enemies, rings };

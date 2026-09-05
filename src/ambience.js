@@ -5,11 +5,11 @@ const beds = {
   city: ['fire3', 'sky4'], palace: ['sea2', 'sky4'], desert: ['fire7', 'earth7'],
   canyon: ['earth7', 'fire7'], river: ['sea2', 'sea4'], farm: ['earth5', 'sea2'], ancient: ['earth7', 'sky4'],
 };
-export function ambientProfile({ zone = 'city', altitude = 3, speed = 30, night = 0, rain = false, sand = false, boost = false, running = false } = {}) {
+export function ambientProfile({ zone = 'city', altitude = 3, speed = 30, night = 0, rain = false, sand = false, wind = 0, boost = false, running = false } = {}) {
   const ground = clamp(1 - altitude / 38, .18, 1);
   const [bed, detail] = beds[zone] || beds.city;
   return [
-    { role: 'air', asset: rain ? 'sky5' : sand ? 'fire7' : 'sky2', gain: .2 + altitude / 160 + (boost ? .07 : 0), cutoff: clamp(2400 + speed * 45 + altitude * 40, 2400, 7000), width: .5 },
+    { role: 'air', asset: rain ? 'sky5' : sand ? 'fire7' : 'sky2', gain: .2 + altitude / 160 + clamp(wind, 0, 1) * .18 + (boost ? .07 : 0), cutoff: clamp(2400 + speed * 45 + altitude * 40 + wind * 1100, 2400, 7000), width: .5 + clamp(wind, 0, 1) * .35 },
     { role: 'land', asset: bed, gain: (.31 * ground + .035) * (running ? 1 : .7), cutoff: 1200 + ground * 3900, width: .28 },
     { role: 'dream', asset: night > .6 && !['palace', 'ancient'].includes(zone) ? 'sky4' : detail, gain: .10 + night * .055 + (boost ? .035 : 0), cutoff: 1900 + night * 700, width: .65 },
   ];

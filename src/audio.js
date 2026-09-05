@@ -39,9 +39,21 @@ export class Soundscape {
     osc.onended = () => { osc.disconnect(); envelope.disconnect(); };
   }
   collect() { this.tone(880, .16, 'sine', .035, 1.5); }
-  spell() { this.tone(260, .17, 'triangle', .025, 2.7); }
+  noise(duration, frequency, gain) {
+    if (!this.enabled || !this.ctx || this.paused) return;
+    const t = this.ctx.currentTime;
+    if (!this.noiseBuffer) { this.noiseBuffer = this.ctx.createBuffer(1, this.ctx.sampleRate, this.ctx.sampleRate); const data = this.noiseBuffer.getChannelData(0); for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1; }
+    const source = this.ctx.createBufferSource(), filter = this.ctx.createBiquadFilter(), envelope = this.ctx.createGain();
+    source.buffer = this.noiseBuffer; filter.type = 'lowpass'; filter.frequency.setValueAtTime(frequency, t); filter.frequency.exponentialRampToValueAtTime(80, t + duration);
+    envelope.gain.setValueAtTime(gain, t); envelope.gain.exponentialRampToValueAtTime(.001, t + duration);
+    source.connect(filter); filter.connect(envelope); envelope.connect(this.effectBus); source.start(); source.stop(t + duration);
+    source.onended = () => { source.disconnect(); filter.disconnect(); envelope.disconnect(); };
+  }
+  spell(kind = 'fire') { this.noise(kind === 'wind' ? .35 : .16, kind === 'storm' ? 8000 : 1600, .12); this.tone(kind === 'storm' ? 620 : 180, .18, 'sawtooth', .035, .3); }
+  impact(kind = 'fire') { this.noise(.26, kind === 'storm' ? 6500 : 1400, .16); this.tone(85, .25, 'sine', .1, .35); }
+  roar() { this.noise(.9, 520, .2); this.tone(65, .8, 'sawtooth', .07, .45); }
   hit() { this.tone(120, .25, 'sawtooth', .035, .3); }
-  kill() { this.tone(330, .25, 'triangle', .04, 2); this.tone(495, .35, 'sine', .025); }
+  kill() { this.noise(.35, 1800, .15); this.tone(95, .3, 'triangle', .08, .3); }
   trick() { this.tone(660, .5, 'sine', .045, 2); }
   update(dt, environment) {
     if (!this.enabled || !this.ambient) return;

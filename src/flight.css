@@ -27,5 +27,19 @@ body.playing,body.playing *{-webkit-user-select:none;user-select:none;-webkit-us
 #world{touch-action:none}
 body.playing .topbar{pointer-events:none}body.playing .top-actions{pointer-events:auto}
 body.playing .spell-tray{pointer-events:none}
+.spell.selected{border-color:#fff1b4;background:#443b27e6;box-shadow:0 0 0 1px #131a26,0 0 14px #ffcc8055}
+.spell-tray{max-width:52vw;flex-wrap:wrap;justify-content:center;bottom:105px}
+#active-spell,#combat-buffs{position:fixed;left:50%;transform:translateX(-50%);text-align:center;text-shadow:0 2px 4px #000,0 0 10px #000;pointer-events:none}
+#active-spell{bottom:85px;font-size:12px;color:#fff1c7;letter-spacing:1px;white-space:nowrap}
+#combat-buffs{bottom:175px;font-size:13px;font-weight:600;color:#bfffdf;max-width:60vw}
+#roll-ready{bottom:63px}
+#boss-hud{position:fixed;top:146px;left:50%;transform:translateX(-50%);width:min(440px,50vw);padding:12px 18px;background:#1d1527ed;border:1px solid #ff694688;text-align:center;box-shadow:0 4px 20px #0005;pointer-events:none}
+#boss-name{font-size:14px;letter-spacing:1.5px;color:#fff0d4}
+#boss-health-track{height:9px;background:#0c101a;margin:9px 0;border:1px solid #f5c6a344}
+#boss-health{display:block;width:100%;height:100%;background:linear-gradient(90deg,#ce263c,#ff9b52);transition:width .12s}
+#boss-phase{font-size:12px;letter-spacing:.8px;color:#ffc6a8}
+.kofi-support{display:inline-block;margin-top:16px;padding:8px 12px;border:1px solid #dfbd8055;border-radius:6px;font-size:13px;color:#f1dbb7;text-decoration:none;background:#18344144}
+.kofi-support:hover{border-color:#f4d29a;background:#18344188}
+@media(max-width:800px){#boss-hud{top:185px;width:58vw}#boss-name{font-size:12px}.spell-tray{bottom:206px;max-width:90vw}#active-spell{bottom:183px}#combat-buffs{bottom:285px;font-size:12px}}
 @media(max-width:800px){.route-progress{top:148px;width:180px}.run-stats{top:196px}.chain{top:200px}#roll-ready{bottom:146px}.route-progress>span{font-size:9px}}
 @media(prefers-reduced-motion:reduce){.loading-star{animation:none}#crosshair,.route-progress i{transition:none}body.boosting #vignette{box-shadow:none}}

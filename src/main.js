@@ -1,11 +1,14 @@
 import './style.css';
 import './flight.css';
 import * as THREE from 'three';
-import { CHUNK, RADIUS, ZONES, ZONE_LENGTH, SPELLS, clamp, lerp, random, createRun, updateRun, generateChunk, zoneAt, multiplier, award, collectSpell, damage, intersectsObstacle, nearObstacle, spellDamage, segmentHitsSphere } from './game.js';
+import { CHUNK, RADIUS, ZONES, ZONE_LENGTH, SPELLS, clamp, lerp, cliffRailAt, createRun, updateRun, generateChunk, zoneAt, multiplier, award, damage, intersectsObstacle, nearObstacle } from './game.js';
 import { mat, mesh, gem, orb, createChunkVisual, placeOnWorld, createCarpet, createPickup, createEnemy, createRing, createSky, disposeChunk } from './world.js';
 import { Soundscape } from './audio.js';
 import { InkRenderer } from './ink.js';
 import { BloodRibbons } from './effects.js';
+import { Battle } from './battle.js';
+import { WEAPONS } from './combat.js';
+import { WeatherField, weatherAt } from './weather.js';
 
 const $ = id => document.getElementById(id);
 const canvas = $('world');
@@ -35,6 +38,18 @@ let notifyPriority = 0, hitTime = 0, trailClock = 0, particleClock = 0, accumula
 let deathTime = 0;
 let audioEnvironment = {};
 let windowFocused = true;
+const battle = new Battle(scene, chunks, bullets, enemyShots, {
+  sound, blood, particles: particleBurst, notify, hurt, tray: updateSpellTray, arena: setArena,
+  hit() { hitTime = .13; $('crosshair').classList.add('hit'); },
+  bossUI(b) {
+    $('boss-hud').hidden = !b;
+    if (!b) return;
+    $('boss-name').textContent = b.name;
+    $('boss-health').style.width = Math.max(0, b.hp / b.maxHp * 100) + '%';
+    $('boss-health-track').setAttribute('aria-valuenow', Math.round(b.hp / b.maxHp * 100));
+    $('boss-phase').textContent = b.shield ? 'WARD ACTIVE · ' + b.sigils.filter(s => s.active).length + ' SIGILS LEFT' : b.phase === 2 ? 'ENRAGED · FINISH IT' : 'WARD BROKEN · UNLEASH EVERYTHING';
+  },
+});
 const STEP = 1 / 90;
 let aim = new THREE.Vector2(0, .03), best = 0, highScore = 0;
 const keys = new Set();
@@ -53,23 +68,19 @@ for (const side of [-1, 1]) {
   const visual = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color: '#c0fff3', vertexColors: true, side: THREE.DoubleSide, transparent: true, opacity: .55, depthWrite: false, blending: THREE.AdditiveBlending }));
   visual.frustumCulled = false; scene.add(visual); trails.push({ side, visual, positions, colors });
 }
-const weatherRng = random(191); const rainCount = 350;
-const rainArray = new Float32Array(rainCount * 3), rainSeeds = [];
-for (let i = 0; i < rainCount; i++) rainSeeds.push([weatherRng() * 90 - 45, weatherRng() * 65, weatherRng() * 110 - 70]);
-const rainGeo = new THREE.BufferGeometry(); rainGeo.setAttribute('position', new THREE.BufferAttribute(rainArray, 3));
-const rain = new THREE.Points(rainGeo, new THREE.PointsMaterial({ color: '#e2eddf', size: .15, transparent: true, opacity: .45, depthWrite: false })); scene.add(rain); rain.visible = false;
+const weatherField = new WeatherField(scene);
 
 function notify(text, duration = 2.2, priority = 0) { if (toastTime > 0 && priority < notifyPriority) return; notifyPriority = priority; $('toast').textContent = text; $('toast').classList.add('show'); toastTime = duration; }
 function banner(zone) { const z = ZONES[zone]; $('zone-banner').querySelector('strong').textContent = z.name; $('zone-banner').querySelector('em').textContent = z.subtitle; $('zone-banner').classList.add('show'); bannerTime = 4; }
 function updateSpellTray() {
   $('spell-tray').replaceChildren();
   for (const [kind, count] of Object.entries(run.spells)) if (count) {
-    const item = document.createElement('div'); item.className = 'spell'; item.style.setProperty('--spell-color', SPELLS[kind].color); item.title = `${SPELLS[kind].description} · level ${count}`;
-    item.innerHTML = `<b>${SPELLS[kind].glyph}</b><span>${SPELLS[kind].name.toUpperCase()}</span><small>${count}</small>`; $('spell-tray').append(item);
+    const item = document.createElement('div'); item.className = 'spell' + (kind === run.weapon ? ' selected' : ''); item.style.setProperty('--spell-color', SPELLS[kind].color); item.title = `${SPELLS[kind].description} · level ${count}`;
+    item.innerHTML = `<b>${SPELLS[kind].glyph}</b><span>${SPELLS[kind].name.toUpperCase()}</span><small>${WEAPONS.includes(kind) ? WEAPONS.indexOf(kind) + 1 + ' · ' : ''}LV ${count}</small>`; $('spell-tray').append(item);
   }
 }
 function clearWorld() {
-  blood.clear();
+  battle.clear(); blood.clear();
   for (const c of chunks.values()) { scene.remove(c.visual); disposeChunk(c.visual); for (const item of [...c.pickups, ...c.enemies, ...c.rings]) scene.remove(item.visual); }
   chunks.clear();
   for (const array of [bullets, enemyShots]) { array.forEach(p => scene.remove(p.visual)); array.length = 0; }
@@ -80,11 +91,19 @@ function ensureChunks(distance, seed) {
   for (const [id, c] of chunks) if (id < index - 2 || id > index + 8) { scene.remove(c.visual); disposeChunk(c.visual); for (const item of [...c.pickups, ...c.enemies, ...c.rings]) scene.remove(item.visual); chunks.delete(id); }
   for (let id = Math.max(0, index - 2); id <= index + 8; id++) {
     if (chunks.has(id)) continue;
-    const c = generateChunk(id, seed); c.visual = createChunkVisual(c, seed); scene.add(c.visual);
+    const c = generateChunk(id, seed); c.combatClear = !!battle.boss; c.visual = createChunkVisual(c, seed, c.combatClear); scene.add(c.visual);
     for (const p of c.pickups) { p.visual = createPickup(p.kind); scene.add(p.visual); p.active = true; }
-    for (const e of c.enemies) { e.visual = createEnemy(); scene.add(e.visual); e.active = true; e.baseX = e.x; e.baseY = e.y; e.maxHp = e.hp; e.cooldown = 1.1 + (id % 3) * .25; e.frozen = 0; }
+    for (const e of c.enemies) { e.visual = createEnemy(e.kind); scene.add(e.visual); e.active = true; e.baseX = e.x; e.baseY = e.y; e.baseS = e.s; e.radius = e.kind === 'brute' ? 3.1 : 2.4; e.maxHp = e.hp; e.cooldown = 1.1 + (id % 3) * .25; e.frozen = 0; }
     for (const r of c.rings) { r.visual = createRing(r.radius); scene.add(r.visual); r.active = true; }
     chunks.set(id, c);
+  }
+}
+function setArena(active) {
+  for (const c of chunks.values()) {
+    c.combatClear = active || c.start < run.distance + 128;
+    scene.remove(c.visual); disposeChunk(c.visual);
+    c.visual = createChunkVisual(c, run.seed, c.combatClear); scene.add(c.visual);
+    if (!active && c.combatClear) for (const e of c.enemies) { e.active = false; e.visual.visible = false; }
   }
 }
 function begin() {
@@ -96,7 +115,7 @@ function begin() {
   for (const id of ['start-screen', 'end-screen', 'pause-screen', 'help-screen', 'menu-footer']) $(id).hidden = true;
   for (const id of ['hud', 'pause', 'crosshair']) $(id).hidden = false;
   document.body.classList.add('playing'); $('zone-banner').classList.remove('show'); updateSpellTray(); ensureChunks(0, run.seed);
-  notify('S to skim low · W to climb · hold click to cast', 5); canvas.focus();
+  notify('1 Fireball · 2 Lightning · 3 Wind blast · hold click to cast', 5); canvas.focus();
   if (sound.ctx && sound.enabled) sound.ctx.resume();
 }
 function pauseGame() { if (state !== 'playing') return; sound.setPaused(true); state = 'paused'; accumulator = 0; keys.clear(); shootHeld = false; $('pause-screen').hidden = false; $('crosshair').hidden = true; document.body.classList.remove('playing', 'boosting'); $('resume').focus(); }
@@ -104,7 +123,7 @@ function resume() { if (state !== 'paused') return; sound.setPaused(false); stat
 function finish() {
   state = 'ended'; shootHeld = false; keys.clear(); $('end-screen').hidden = false; $('hud').hidden = true; $('pause').hidden = true; $('crosshair').hidden = true; document.body.classList.remove('playing', 'boosting');
   $('end-distance').textContent = Math.floor(run.distance).toLocaleString(); $('end-score').textContent = Math.floor(run.score).toLocaleString(); $('end-combo').textContent = `×${run.bestChain}`;
-  $('end-copy').textContent = `${run.kills} spirits banished · ${run.tricks} sky rolls · ${run.nearMisses} close calls`;
+  $('end-copy').textContent = `${run.kills} monsters slain · ${run.bosses} bosses defeated · ${run.tricks} sky rolls`;
   $('end-best').textContent = run.distance > best ? '✦ A new farthest horizon' : `Farthest horizon · ${Math.floor(best).toLocaleString()} m`;
   best = Math.max(best, run.distance); highScore = Math.max(highScore, run.score);
   try { localStorage.setItem('mcw-best', String(best)); localStorage.setItem('mcw-score', String(highScore)); } catch { /* Best scores are optional. */ }
@@ -126,6 +145,11 @@ document.addEventListener('keydown', e => {
     if (e.code === 'Escape' || e.code === 'KeyP') { if (!$('help-screen').hidden) closeHelp(); else if (state === 'playing') pauseGame(); else if (state === 'paused') resume(); return; }
     if (e.code === 'Enter' && $('help-screen').hidden && (state === 'menu' || state === 'ended')) { e.preventDefault(); begin(); return; }
     if (e.code === 'KeyM') $('sound').click();
+    if (state === 'playing') {
+      const weapon = { Digit1: 'fire', Digit2: 'storm', Digit3: 'wind' }[e.code];
+      if (weapon) battle.switchWeapon(run, weapon);
+      if (e.code === 'KeyQ') battle.switchWeapon(run, WEAPONS[(WEAPONS.indexOf(run.weapon) + 1) % WEAPONS.length]);
+    }
     if (e.code === 'Space' && state === 'playing' && run.altitude < 4) notify('Climb above 4m to barrel roll', 1.5);
   }
   keys.add(e.code);
@@ -159,60 +183,7 @@ function hurt() {
   if (!damage(run)) return;
   flashTime = .4; $('damage-flash').style.opacity = '1'; sound.hit(); particleBurst(run.x, run.altitude, run.distance, '#ffc1a1', 18); notify(run.hp === 1 ? 'One heart. You’ve got this.' : 'Close call · chain lost', 2, 3);
 }
-function defeat(e) {
-  if (!e.active) return;
-  e.active = false; e.visual.visible = false; run.kills++; award(run, 160, 12); sound.kill();
-  particleBurst(e.x, e.y, e.s, '#d9b8ff', 19); notify(`Spirit banished · +${160 * multiplier(run)}`, 1.1);
-  blood.burst(e.x, e.y, e.s, 26);
-}
-function strike(e, chained = false) {
-  if (!e.active) return;
-  const frozen = e.frozen > 0;
-  e.hp -= spellDamage(run.spells, frozen) * (chained ? .7 : 1);
-  hitTime = .13; $('crosshair').classList.add('hit');
-  if (run.spells.frost) e.frozen = 1.4 + run.spells.frost * .6;
-  particleBurst(e.x, e.y, e.s, frozen ? '#bdf3ec' : '#ffc382', 5);
-  if (e.hp > 0) blood.burst(e.x, e.y, e.s, 3);
-  if (e.hp <= 0) defeat(e);
-  if (!chained && run.spells.storm) {
-    let jumps = run.spells.storm;
-    for (const c of chunks.values()) for (const other of c.enemies) {
-      if (!jumps || !other.active || other === e) continue;
-      if (Math.hypot(other.x - e.x, other.y - e.y, other.s - e.s) < 19 + run.spells.storm * 5) {
-        for (let i = 0; i < 10; i++) particleBurst(lerp(e.x, other.x, i / 10), lerp(e.y, other.y, i / 10), lerp(e.s, other.s, i / 10), '#ffecaa', 1);
-        strike(other, true); jumps--;
-      }
-    }
-  }
-}
-function fire() {
-  if (run.shotCooldown > 0 || bullets.length > 65) return;
-  run.shotCooldown = .19 - Math.min(3, run.spells.fire) * .016; sound.spell();
-  let target = null, closest = .24;
-  for (const c of chunks.values()) for (const e of c.enemies) {
-    if (!e.active || e.s < run.distance + 3 || e.s > run.distance + 145) continue;
-    temp.copy(e.visual.position).project(camera);
-    const delta = Math.hypot(temp.x - aim.x, temp.y - aim.y);
-    if (delta < closest) { closest = delta; target = e; }
-  }
-  let tx, ty, ts;
-  if (target) {
-    const travel = (target.s - run.distance) / 250, phase = target.phase + travel * (target.frozen ? .15 : .7);
-    tx = target.baseX + Math.sin(phase) * 2; ty = target.baseY + Math.sin(phase * 1.4) * .9; ts = target.s;
-  }
-  else {
-    // Intersect the pointer ray with a plane ahead, then convert back to spherical altitude.
-    const rayPoint = new THREE.Vector3(aim.x, aim.y, .5).unproject(camera), direction = rayPoint.sub(camera.position).normalize();
-    const t = (-70 - camera.position.z) / Math.min(-.01, direction.z); rayPoint.copy(camera.position).addScaledVector(direction, t);
-    tx = clamp(rayPoint.x, -110, 110); ty = clamp(rayPoint.y + 70 * 70 / (2 * RADIUS), .3, 90); ts = run.distance + 70;
-  }
-  const count = 1 + run.spells.echo;
-  for (let i = 0; i < count; i++) {
-    const spread = (i - (count - 1) / 2) * .018, ds = Math.max(7, ts - run.distance);
-    const visual = mesh(orb, run.spells.frost ? '#b6eeee' : '#ffc28a', scene, [0, 0, 0], [.27, .27, .75], [0, 0, 0], true);
-    bullets.push({ visual, x: run.x, y: run.altitude + .9, s: run.distance + 2, vx: (tx - run.x) / ds * 250 + spread * 250, vy: (ty - run.altitude - .9) / ds * 250, life: 1.4 });
-  }
-}
+function fire() { battle.fire(run, aim, camera); }
 
 function updateEntities(dt, distance, playing, previousDistance = distance) {
   for (const c of chunks.values()) {
@@ -227,7 +198,7 @@ function updateEntities(dt, distance, playing, previousDistance = distance) {
         if (d < range) {
           p.active = false; p.visual.visible = false;
           if (p.kind === 'gold') { award(run, 15, 2, false); if (run.chain) run.chainTimer = Math.max(run.chainTimer, 3); sound.collect(); }
-          else { collectSpell(run, p.kind); updateSpellTray(); notify(SPELLS[p.kind].description, 3, 2); sound.trick(); }
+          else battle.collect(run, p.kind);
           particleBurst(p.x, p.y, p.s, p.kind === 'gold' ? '#ffe5a6' : SPELLS[p.kind].color, p.kind === 'gold' ? 4 : 20); continue;
         }
       }
@@ -240,45 +211,13 @@ function updateEntities(dt, distance, playing, previousDistance = distance) {
         r.active = false; r.visual.visible = false; award(run, 120, 14); sound.trick(); notify(`Thread the needle · +${120 * multiplier(run)}`, 1.5); particleBurst(r.x, r.y, r.s, '#ffdf92', 24);
       }
     }
-    for (const e of c.enemies) {
-      if (!e.active) continue;
-      e.frozen = Math.max(0, e.frozen - dt);
-      if (playing) { e.phase += dt * (e.frozen ? .15 : .7); e.x = e.baseX + Math.sin(e.phase) * 2; e.y = e.baseY + Math.sin(e.phase * 1.4) * .9; }
-      placeOnWorld(e.visual, e.x, e.s, e.y, distance); e.visual.rotation.z = Math.sin(e.phase) * .12;
-      const feedback = e.visual.userData;
-      feedback.health.scale.x = 1.8 * clamp(e.hp / e.maxHp, 0, 1); feedback.health.position.x = -.9 * (1 - e.hp / e.maxHp);
-      feedback.frost.visible = e.frozen > 0; feedback.frost.rotation.y = globalTime;
-      if (e.frozen) e.visual.scale.setScalar(.92 + Math.sin(globalTime * 14) * .025); else e.visual.scale.setScalar(1);
-      const ahead = e.s - distance;
-      feedback.charge.visible = ahead > 12 && ahead < 130 && e.cooldown < .65;
-      if (feedback.charge.visible) { feedback.charge.scale.setScalar(1.1 + e.cooldown * 1.4); feedback.charge.rotation.z = globalTime * 4; }
-      if (playing && ahead > 12 && ahead < 130) {
-        e.cooldown -= dt * (e.frozen ? .25 : 1);
-        if (e.cooldown <= 0 && enemyShots.length < 28) {
-          e.cooldown = 3.2; const visual = mesh(gem, '#e68fab', scene, [0, 0, 0], [.45, .45, .7], [0, 0, 0], true);
-          const arrival = ahead / (run.speed + 28);
-          enemyShots.push({ visual, x: e.x, y: e.y, s: e.s, vx: (run.x - e.x) / arrival, vy: (run.altitude - e.y) / arrival, life: 4 });
-        }
-      }
-      if (playing && Math.abs(ahead) < 1.7 && Math.hypot(e.x - run.x, e.y - run.altitude) < 2) { hurt(); e.active = false; e.visual.visible = false; }
-    }
-    if (playing) for (const o of c.obstacles) {
+    for (const e of c.enemies) battle.updateEnemy(e, dt, distance, run, playing, globalTime);
+    if (playing && !c.combatClear) for (const o of c.obstacles) {
       if (intersectsObstacle(run, o)) hurt();
       else if (!o.near && nearObstacle(run, o)) { o.near = true; run.nearMisses++; award(run, 70, 9); notify('Silk-thin escape · +skyfire', 1.1); sound.collect(); }
     }
   }
-  if (!playing) return;
-  for (let i = bullets.length - 1; i >= 0; i--) {
-    const b = bullets[i], from = { x: b.x, y: b.y, s: b.s }; b.s += 250 * dt; b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
-    let hit = false;
-    for (const c of chunks.values()) for (const e of c.enemies) if (!hit && e.active && segmentHitsSphere(from, b, e, 1.9 + run.spells.fire * .15)) { strike(e); hit = true; }
-    if (b.life <= 0 || hit) { scene.remove(b.visual); bullets.splice(i, 1); } else placeOnWorld(b.visual, b.x, b.s, b.y, distance);
-  }
-  for (let i = enemyShots.length - 1; i >= 0; i--) {
-    const p = enemyShots[i], from = { x: p.x, y: p.y, s: p.s - previousDistance }; p.s -= 28 * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt;
-    if (segmentHitsSphere(from, { x: p.x, y: p.y, s: p.s - distance }, { x: run.x, y: run.altitude, s: 0 }, 1.3)) { if (!run.roll) hurt(); else { award(run, 35, 4); notify('Spell slip · +skyfire', 1); } p.life = 0; }
-    if (p.life <= 0 || p.s < distance - 10) { scene.remove(p.visual); enemyShots.splice(i, 1); } else { placeOnWorld(p.visual, p.x, p.s, p.y, distance); p.visual.rotation.z = globalTime * 5; }
-  }
+  if (playing) battle.update(dt, run, previousDistance);
 }
 function updateParticles(dt, distance) {
   for (let i = particles.length - 1; i >= 0; i--) {
@@ -293,29 +232,25 @@ function updateParticles(dt, distance) {
 function updateAtmosphere(dt, distance) {
   const z = ZONES[zoneAt(distance)], cycle = state === 'menu' ? .14 : run.time / 150 + .14;
   const daylight = (Math.sin(cycle * Math.PI * 2) + 1) / 2, night = 1 - THREE.MathUtils.smoothstep(daylight, .12, .6);
-  const weatherCycle = Math.floor((state === 'menu' ? 0 : run.time) / 38);
-  const weather = state === 'menu' ? 0 : [0, 1, 0, 2, 0, 1, 2][(weatherCycle + zoneAt(distance)) % 7];
-  const sand = weather === 2 && ['desert', 'ancient', 'canyon'].includes(z.type), raining = weather === 2 && !sand;
-  audioEnvironment = { zone: z.type, altitude: state === 'menu' ? 8 : run.altitude, speed: run.speed, night, rain: raining, sand, boost: run.boost };
+  const conditions = weatherAt(state === 'menu' ? 0 : run.time, z.type);
+  const { sand, rain: raining, storm, wind } = conditions;
+  audioEnvironment = { zone: z.type, altitude: state === 'menu' ? 8 : run.altitude, speed: run.speed, night, rain: raining, sand, boost: run.boost, wind };
   const skyTop = new THREE.Color(z.sky).lerp(new THREE.Color('#407677'), .32).lerp(new THREE.Color('#202d55'), night);
   const horizon = new THREE.Color(z.fog).lerp(new THREE.Color('#eba777'), (1 - Math.abs(daylight * 2 - 1)) * .26).lerp(new THREE.Color('#646086'), night);
-  if (sand) horizon.lerp(new THREE.Color('#d3a773'), .55);
-  if (raining) skyTop.lerp(new THREE.Color('#667e91'), .5);
+  if (sand) horizon.lerp(new THREE.Color('#c79562'), .72);
+  if (raining) skyTop.lerp(new THREE.Color('#40536a'), storm ? .8 : .5);
   sky.uniforms.top.value.lerp(skyTop, dt * .5); sky.uniforms.bottom.value.lerp(horizon, dt * .5); scene.fog.color.lerp(horizon, dt * .5);
-  scene.fog.far = lerp(scene.fog.far, sand ? 290 : raining ? 370 : 480, dt * .3);
+  scene.fog.far = lerp(scene.fog.far, sand ? 200 : storm ? 250 : raining ? 340 : 480, dt * .3);
   planetMaterial.color.lerp(new THREE.Color(z.ground), dt * .5);
   ambient.intensity = lerp(ambient.intensity, 1.05 - night * .28, dt); sunlight.intensity = lerp(sunlight.intensity, 1.85 - night * .85, dt);
   sunlight.color.lerp(new THREE.Color(night > .5 ? '#b5c9fa' : '#ffe1b1'), dt * .5);
   sky.sun.visible = night < .7; sky.moon.visible = night > .2; sky.stars.material.opacity = night * .8;
-  sky.sun.position.y = 35 + daylight * 115; sky.clouds.rotation.y += dt * (weather ? .005 : .0015);
+  sky.sun.position.y = 35 + daylight * 115; sky.clouds.rotation.y += dt * (wind * .016);
   sky.lanterns.children.forEach((lantern, i) => { lantern.position.y = lantern.userData.baseY + Math.sin(globalTime * .3 + i) * 2; lantern.rotation.z = Math.sin(globalTime * .5 + i) * .07; });
-  rain.visible = raining || sand;
-  if (rain.visible) {
-    rain.material.color.set(sand ? '#edc38a' : '#d7e8e0'); rain.material.size = sand ? .2 : .11;
-    for (let i = 0; i < rainCount; i++) { const [x, y, s] = rainSeeds[i]; rainArray[i * 3] = ((x + globalTime * (sand ? 12 : 2) + 100) % 90) - 45; rainArray[i * 3 + 1] = (y - globalTime * (sand ? 3 : 25) % 65 + 65) % 65; rainArray[i * 3 + 2] = s; }
-    rainGeo.attributes.position.needsUpdate = true;
-  }
-  return `${night > .6 ? '☾ MOONLIT' : daylight > .85 ? '✦ DAYLIGHT' : '✦ GOLDEN HOUR'} · ${sand ? 'SAND WINDS' : raining ? 'PASSING RAIN' : weather === 1 ? 'GENTLE WINDS' : 'CLEAR SKIES'}`;
+  if (weatherField.update(globalTime, distance, state === 'menu' ? 0 : run.x, state === 'menu' ? 8 : run.altitude, z.type, conditions)) sound.roar();
+  sunlight.intensity += weatherField.flash * dt * 12;
+  return `${night > .6 ? '☾ MOONLIT' : daylight > .85 ? '✦ DAYLIGHT' : '✦ GOLDEN HOUR'} · ${sand ? 'SANDSTORM' : storm ? 'THUNDERSTORM' : raining ? 'DRIVING RAIN' : wind > .5 ? 'SWIRLING WINDS' : 'CLEAR SKIES'}`;
+
 }
 function updateCarpet(dt, playing) {
   const x = state === 'menu' ? 8 : run.x, altitude = state === 'menu' ? 7 + Math.sin(globalTime * .8) * .5 : run.altitude;
@@ -334,7 +269,7 @@ function updateCarpet(dt, playing) {
   particleClock += playing ? dt : 0;
   if (playing && particleClock >= 1 / 35) {
     particleClock %= 1 / 35;
-    const color = run.boost ? '#a4e9e0' : '#edbf78';
+    const color = run.railing ? '#b1ffda' : run.boost ? '#a4e9e0' : '#edbf78';
     particleBurst(x + (Math.random() - .5) * 2.7, altitude - .15, run.distance - 2.3, color, run.boost ? 2 : 1);
   }
 }
@@ -369,6 +304,7 @@ function updateCamera(dt) {
   }
   const follow = state === 'menu' ? 4 : 10;
   camera.position.lerp(goalPosition, 1 - Math.exp(-dt * follow)); currentLook.lerp(goalLook, 1 - Math.exp(-dt * follow)); camera.lookAt(currentLook);
+  if (state === 'playing') { camera.position.x += Math.sin(globalTime * 77) * battle.shake * .35; camera.position.y += Math.cos(globalTime * 91) * battle.shake * .25; }
   camera.fov = lerp(camera.fov, state === 'menu' ? 49 : run.boost ? 78 : 60 + clamp((run.speed - 40) * .2, 0, 10), 1 - Math.exp(-dt * 5)); camera.updateProjectionMatrix();
 }
 function updateUI(weather) {
@@ -379,15 +315,20 @@ function updateUI(weather) {
   $('combo').textContent = `×${multiplier(run)}`; $('combo-label').textContent = run.chain ? `${run.chain} MOMENTS OF MAGIC` : 'FIND YOUR FLOW'; $('combo-bar').style.width = `${run.chainTimer / 5 * 100}%`;
   $('power-bar').style.width = `${run.power}%`; $('power-value').textContent = `${Math.floor(run.power)}%`; $('power-hint').textContent = run.boost ? 'Skyfire flowing · keep the chain alive' : run.power >= 25 ? 'Hold SHIFT to ride the skyfire' : 'Skim low to gather power';
   $('speed-value').textContent = Math.round(run.speed * 3.6); $('altitude').textContent = `${run.vy > 1 ? '↑ ' : run.vy < -1 ? '↓ ' : ''}${run.altitude.toFixed(1)} m above ground`;
-  $('flight-mode').textContent = run.boost ? '✦ SKYFIRE ASCENDANT' : run.altitude < 3.5 ? '✦ GROUND EFFECT' : run.roll ? '✧ SILK SPIRAL' : 'RIDE THE WIND';
+  $('flight-mode').textContent = run.boost ? '✦ SKYFIRE ASCENDANT' : run.railing ? '✦ CLIFF RIDER · +SPEED' : run.altitude < 3.5 ? '✦ GROUND EFFECT' : run.roll ? '✧ SILK SPIRAL' : 'RIDE THE WIND';
   const zone = zoneAt(run.distance), progress = (run.distance % ZONE_LENGTH) / ZONE_LENGTH;
   $('zone-progress').style.width = `${progress * 100}%`;
   $('next-zone').textContent = `${Math.ceil(ZONE_LENGTH - run.distance % ZONE_LENGTH)} m to ${ZONES[(zone + 1) % ZONES.length].name}`;
+  $('combat-buffs').textContent = Object.entries(run.buffs).filter(([, t]) => t > 0).map(([kind, t]) => SPELLS[kind].name.toUpperCase() + ' ' + Math.ceil(t) + 's').join('  ·  ');
+  $('active-spell').textContent = SPELLS[run.weapon].name.toUpperCase() + ' · LV ' + run.spells[run.weapon] + ' · 1 / 2 / 3 OR Q';
+  const nextRail = cliffRailAt(run.distance + 140), railPhrase = Math.floor((run.distance + 140) / 2560);
+  if (nextRail && !battle.boss && run.railNotified !== railPhrase) {
+    run.railNotified = railPhrase;
+    notify(`CLIFF RAIL AHEAD · ${nextRail.side > 0 ? 'RIGHT' : 'LEFT'} EDGE · SKIM AT 6–46m`, 4, 2);
+  }
   $('roll-ready').textContent = run.roll ? '✧ ROLLING' : run.rollCooldown > 0 ? `ROLL · ${run.rollCooldown.toFixed(1)}s` : run.altitude < 4 ? 'ROLL · CLIMB TO 4m' : 'SPACE · ROLL READY';
   document.body.classList.toggle('boosting', run.boost);
-  let locked = false;
-  for (const c of chunks.values()) for (const e of c.enemies) if (e.active && e.s > run.distance + 3 && e.s < run.distance + 145) { temp.copy(e.visual.position).project(camera); if (Math.hypot(temp.x - aim.x, temp.y - aim.y) < .24) locked = true; }
-  $('crosshair').classList.toggle('locked', locked);
+  $('crosshair').classList.toggle('locked', !!battle.lock(run, aim, camera));
 }
 
 ensureChunks(menuDistance, run.seed); camera.position.set(11, 26, 48); camera.lookAt(-19, 1, -35);
@@ -400,7 +341,7 @@ function frame(now) {
   if (playing) {
     const steer = (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0);
     const lift = (keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0) - (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0);
-    const input = { steer, lift, boost: keys.has('ShiftLeft') || keys.has('ShiftRight'), roll: keys.has('Space') };
+    const input = { steer, lift, boost: keys.has('ShiftLeft') || keys.has('ShiftRight'), roll: keys.has('Space'), arena: !!battle.boss || !!chunks.get(Math.floor(run.distance / CHUNK))?.combatClear };
     accumulator = Math.min(accumulator + dt, STEP * 8);
     while (accumulator >= STEP && !run.ended) {
       const previousDistance = run.distance;
@@ -409,7 +350,7 @@ function frame(now) {
       updateEntities(STEP, run.distance, true, previousDistance);
       accumulator -= STEP;
     }
-    while (run.events.length) { run.events.pop(); notify(`Silk spiral · +${90 * multiplier(run)} · +11 skyfire`, 1.2); sound.trick(); }
+    while (run.events.length) { const event = run.events.pop(); notify(event === 'rail' ? 'CLIFF RIDER · +45 · +SKYFIRE' : `Silk spiral · +${90 * multiplier(run)} · +11 skyfire`, 1.2); if (event !== 'rail') sound.trick(); }
     const nextZone = zoneAt(run.distance); if (nextZone !== lastZone) { lastZone = nextZone; banner(lastZone); }
   }
   const distance = state === 'menu' ? menuDistance : run.distance;
@@ -417,7 +358,7 @@ function frame(now) {
   // Refresh placement after streaming even if this display frame had no simulation step.
   updateEntities(0, distance, false); updateParticles(worldDt, distance); updateCarpet(worldDt, playing); updateTrails(worldDt, distance, playing); updateCamera(frozen ? 0 : dt);
   const weather = updateAtmosphere(worldDt, distance);
-  blood.update(worldDt, distance);
+  blood.update(worldDt, distance); battle.render(worldDt, distance, globalTime);
   sound.update(dt, { ...audioEnvironment, running: playing, paused: frozen || document.hidden || !windowFocused });
   if (toastTime > 0) { toastTime -= worldDt; if (toastTime <= 0) $('toast').classList.remove('show'); }
   if (bannerTime > 0) { bannerTime -= worldDt; if (bannerTime <= 0) $('zone-banner').classList.remove('show'); }

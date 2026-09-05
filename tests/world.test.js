@@ -10,7 +10,8 @@ test('every zone creates finite merged geometry without mutating collision shape
     const index = zone * 20 + (3 - zone * 20 % 6 + 6) % 6;
     const chunk = generateChunk(index, 671), expected = structuredClone(chunk.obstacles), visual = createChunkVisual(chunk, 671);
     assert.deepEqual(chunk.obstacles, expected);
-    assert.ok(visual.children.length > 0 && visual.children.length < 40);
+    assert.ok(visual.children.length > 0 && visual.children.length <= 4);
+    visual.traverse(m => { if (m.isMesh) { assert.equal(m.material.vertexColors, true); assert.equal(m.geometry.attributes.color.count, m.geometry.attributes.position.count); } });
     visual.traverse(m => { if (m.isMesh) { assert.ok(m.geometry.attributes.position.count > 0); for (const n of m.geometry.attributes.position.array) assert.ok(Number.isFinite(n)); m.geometry.computeBoundingSphere(); assert.ok(Number.isFinite(m.geometry.boundingSphere.radius)); } });
     disposeChunk(visual);
   }
