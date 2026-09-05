@@ -13,6 +13,7 @@ import { WeatherField, weatherAt } from './weather.js';
 import { MagicField } from './magic.js';
 import { RACE_LEVELS, RaceRecords, createCourse, createAttempt, generateRaceChunk, stepRace, formatTime, checkpointDelta } from './race.js';
 import { RaceView } from './race-view.js';
+import { ADVENTURE_TIME_SCALE, balanceAt } from './pacing.js';
 import './race.css';
 
 const $ = id => document.getElementById(id);
@@ -431,10 +432,12 @@ function updateUI(weather) {
   $('hearts').textContent = Array.from({ length: 3 }, (_, i) => i < run.hp ? '♥' : '♡').join(' '); $('hearts').setAttribute('aria-label', `${run.hp} health`);
   $('combo').textContent = `×${multiplier(run)}`; $('combo-label').textContent = run.chain ? `${run.chain} MOMENTS OF MAGIC` : 'FIND YOUR FLOW'; $('combo-bar').style.width = `${run.chainTimer / 5 * 100}%`;
   $('power-bar').style.width = `${run.power}%`; $('power-value').textContent = `${Math.floor(run.power)}%`; $('power-hint').textContent = run.boost ? 'Skyfire flowing · keep the chain alive' : run.power >= 25 ? 'Hold SHIFT to ride the skyfire' : 'Skim low to gather power';
-  $('speed-value').textContent = Math.round(run.speed * 3.6); $('altitude').textContent = `${run.vy > 1 ? '↑ ' : run.vy < -1 ? '↓ ' : ''}${run.altitude.toFixed(1)} m above ground`;
+  $('speed-value').textContent = Math.round(run.speed * 3.6 * (raceAttempt ? 1 : ADVENTURE_TIME_SCALE)); $('altitude').textContent = `${run.vy > 1 ? '↑ ' : run.vy < -1 ? '↓ ' : ''}${run.altitude.toFixed(1)} m above ground`;
   $('flight-mode').textContent = run.boost ? '✦ SKYFIRE ASCENDANT' : run.railing ? '✦ CLIFF RIDER · +SPEED' : run.altitude < 3.5 ? '✦ GROUND EFFECT' : run.roll ? '✧ SILK SPIRAL' : 'RIDE THE WIND';
   const zone = zoneAt(run.distance), progress = (run.distance % ZONE_LENGTH) / ZONE_LENGTH;
   $('zone-progress').style.width = `${progress * 100}%`;
+  const balance = balanceAt(run.distance);
+  $('journey-stage').textContent = balance.respite > .6 ? 'CATCH YOUR BREATH' : balance.stage;
   $('next-zone').textContent = `${Math.ceil(ZONE_LENGTH - run.distance % ZONE_LENGTH)} m to ${ZONES[(zone + 1) % ZONES.length].name}`;
   $('combat-buffs').textContent = Object.entries(run.buffs).filter(([, t]) => t > 0).map(([kind, t]) => SPELLS[kind].name.toUpperCase() + ' ' + Math.ceil(t) + 's').join('  ·  ');
   $('active-spell').textContent = SPELLS[run.weapon].name.toUpperCase() + ' · LV ' + run.spells[run.weapon] + ' · 1 / 2 / 3 OR Q';
@@ -455,13 +458,14 @@ let firstFrame = true;
 function frame(now) {
   const dt = Math.min((now - lastTime) / 1000, .09); lastTime = now;
   const frozen = state === 'paused' || !$('help-screen').hidden;
-  const worldDt = frozen ? 0 : dt; globalTime += worldDt;
+  const timeScale = raceAttempt || state === 'menu' || state === 'race-setup' ? 1 : ADVENTURE_TIME_SCALE;
+  const worldDt = frozen ? 0 : dt * timeScale; globalTime += worldDt;
   const playing = state === 'playing';
   if (playing) {
     const steer = (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0);
     const lift = (keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0) - (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0);
-    const input = { steer, lift, boost: keys.has('ShiftLeft') || keys.has('ShiftRight'), roll: keys.has('Space'), arena: !!battle.boss || !!chunks.get(Math.floor(run.distance / CHUNK))?.combatClear };
-    accumulator = Math.min(accumulator + dt, STEP * 8);
+    const input = { steer, lift, controlRate: 1 / timeScale, boost: keys.has('ShiftLeft') || keys.has('ShiftRight'), roll: keys.has('Space'), arena: !!battle.boss || !!chunks.get(Math.floor(run.distance / CHUNK))?.combatClear };
+    accumulator = Math.min(accumulator + dt * timeScale, STEP * 8);
     while (accumulator >= STEP && !run.ended && state === 'playing') {
       const previousDistance = run.distance;
       if (raceAttempt) {

@@ -44,8 +44,8 @@ test('application boots, flies, casts, rolls once per press, pauses, resumes and
       .replace("from 'three'", `from '${import.meta.resolve('three')}'`)
       .replace(/from '(\.\/[^']+)'/g, (_, path) => `from '${new URL('../src/' + path.slice(2), import.meta.url).href}'`)
       .replace('new THREE.WebGLRenderer(', 'new globalThis.__TestRenderer(');
-    source += '\nexport const snapshot = () => ({ state, distance: run.distance, altitude: run.altitude, tricks: run.tricks, shots: bullets.length, chunks: chunks.size, particles: particles.length, hp: run.hp, weapon: run.weapon, boss: !!battle.boss, bossAge: battle.boss?.age, arenaClear: [...chunks.values()].every(c => c.combatClear), buff: run.buffs.rapid });';
-    source += '\nexport const enterBoss = () => { run.distance = 1400; run.invulnerable = 999; run.buffs.rapid = 10; ensureChunks(run.distance, run.seed); };';
+    source += '\nexport const snapshot = () => ({ state, time: run.time, distance: run.distance, altitude: run.altitude, tricks: run.tricks, shots: bullets.length, chunks: chunks.size, particles: particles.length, hp: run.hp, weapon: run.weapon, boss: !!battle.boss, bossAge: battle.boss?.age, arenaClear: [...chunks.values()].every(c => c.combatClear), buff: run.buffs.rapid });';
+    source += '\nexport const enterBoss = () => { run.distance = battle.nextBoss; run.invulnerable = 999; run.buffs.rapid = 10; ensureChunks(run.distance, run.seed); };';
     source += '\nexport const raceSnapshot = () => ({ state, player: raceAttempt?.player, elapsed: raceAttempt?.elapsed, countdown: raceAttempt?.countdown, ghost: !!raceAttempt?.ghost, seed: raceAttempt?.course.seed, gates: raceView.gates.length, next: raceAttempt?.nextGate, records: raceRecords.get(raceLevel).best.map(b => b?.time), racing: document.body.classList.contains("racing") });';
     source += '\nexport const approachNextGate = () => { const g = raceAttempt.course.gates[raceAttempt.nextGate]; Object.assign(run, { distance: g.s - .1, x: g.x, altitude: g.y, vx: 0, vy: 0 }); };';
     const { snapshot, enterBoss, raceSnapshot, approachNextGate } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
@@ -53,6 +53,7 @@ test('application boots, flies, casts, rolls once per press, pauses, resumes and
     dispatch('keydown', { code: 'Enter', target: { tagName: 'BUTTON' } }); assert.equal(snapshot().state, 'menu');
     elements.get('start').onclick(); dispatch('keydown', { code: 'KeyW' }); advance(2.1); dispatch('keyup', { code: 'KeyW' });
     assert.equal(snapshot().state, 'playing'); assert.ok(snapshot().altitude > 20); assert.ok(snapshot().distance > 45);
+    assert.ok(Math.abs(snapshot().time - 2.1 * .82) < .02, 'the real adventure loop advances at the slower tempo');
     const highAltitude = snapshot().altitude;
     dispatch('keydown', { code: 'KeyS' }); advance(.4); dispatch('keyup', { code: 'KeyS' }); assert.ok(snapshot().altitude < highAltitude);
     const lowAltitude = snapshot().altitude;

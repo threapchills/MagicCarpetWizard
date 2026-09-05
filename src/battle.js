@@ -4,6 +4,7 @@ import { WEAPONS, weaponProfile, tickBuffs, damageFor, makeBoss, moveBoss, bossP
 import { FOES, moveEnemy } from './foes.js';
 import { createHalo, glowCore } from './glow.js';
 import { elevationAt } from './landscape.js';
+import { balanceAt, FIRST_BOSS_DISTANCE } from './pacing.js';
 import { mesh, mat, gem, orb, createEnemy, createPickup, placeOnTerrain as placeOnWorld } from './world.js';
 
 const hoop = new THREE.TorusGeometry(1, .055, 5, 36);
@@ -13,7 +14,7 @@ const colors = { fire: '#ff6b25', storm: '#aeeaff', wind: '#b8ffe6' };
 export class Battle {
   constructor(scene, chunks, bullets, shots, hooks) {
     Object.assign(this, { scene, chunks, bullets, shots, hooks });
-    this.fx = []; this.drops = []; this.boss = null; this.nextBoss = 1400; this.warning = false;
+    this.fx = []; this.drops = []; this.boss = null; this.nextBoss = FIRST_BOSS_DISTANCE; this.warning = false;
     this.shake = 0; this.killsAtBoss = 0; this.castPulse = 0; this.temp = new THREE.Vector3();
     this.roamers = []; this.encounters = 0;
   }
@@ -22,7 +23,7 @@ export class Battle {
     for (const f of this.fx) { this.scene.remove(f.visual); f.geometry?.dispose(); }
     for (const p of this.drops) this.scene.remove(p.visual);
     if (this.boss) { this.scene.remove(this.boss.visual); this.boss.sigils.forEach(s => this.scene.remove(s.visual)); }
-    this.fx.length = this.drops.length = 0; this.boss = null; this.nextBoss = 1400; this.warning = false; this.killsAtBoss = 0; this.shake = this.castPulse = 0;
+    this.fx.length = this.drops.length = 0; this.boss = null; this.nextBoss = FIRST_BOSS_DISTANCE; this.warning = false; this.killsAtBoss = 0; this.shake = this.castPulse = 0;
     this.hooks.bossUI(null);
   }
   targets() {
@@ -103,7 +104,7 @@ export class Battle {
       this.hooks.notify('BOSS SLAIN · +2,000 · HEART RESTORED · OVERDRIVE', 5, 5);
       this.scene.remove(e.visual); e.sigils.forEach(s => this.scene.remove(s.visual)); this.boss = null;
       this.shots.forEach(p => this.scene.remove(p.visual)); this.shots.length = 0;
-      this.nextBoss = run.distance + 2560; this.killsAtBoss = run.kills; this.warning = false;
+      this.nextBoss = run.distance + balanceAt(run.distance).bossSpacing; this.killsAtBoss = run.kills; this.warning = false;
       this.hooks.arena(false); this.hooks.bossUI(null); this.hooks.tray(); return;
     }
     run.kills++; award(run, 180, 12);
@@ -174,9 +175,11 @@ export class Battle {
     }
   }
   launch(enemy, targets, run, speed = 34) {
+    const pace = balanceAt(run.distance).projectileSpeed;
+    speed *= pace;
     for (const target of targets) {
       if (this.shots.length >= 64) break;
-      const behind = enemy.s < run.distance, vs = behind ? 155 : -speed;
+      const behind = enemy.s < run.distance, vs = behind ? 155 * pace : -speed;
       const arrival = Math.max(.35, Math.abs(enemy.s - run.distance) / Math.max(25, behind ? vs - run.speed : run.speed + speed));
       const arrow = !!FOES[enemy.kind]?.arrow, gravity = arrow ? 9 : 0;
       const visual = new THREE.Group(); this.scene.add(visual);
@@ -203,18 +206,18 @@ export class Battle {
     if (!e.visual.visible) return;
     if (playing && e.s - distance < 230 && e.s - distance > -75) {
       this.status(e, dt, run); if (!e.active) return;
-      const rule = FOES[e.kind] || FOES.stalker, leaping = e.leap != null;
+      const rule = FOES[e.kind] || FOES.stalker, leaping = e.leap != null, balance = balanceAt(distance);
       moveEnemy(e, run, dt);
       if (e.kind === 'fish' && !leaping && e.leap != null) this.ring(e.baseX, .25, e.baseS, '#b7ffff', 5, .6);
       if (!e.active) { this.ring(e.x, .25, e.s, '#b7ffff', 4, .5); return; }
       const ahead = e.s - distance;
       if ((ahead > 8 || rule.mobile && ahead > -55) && ahead < 170 && !e.stagger && e.kind !== 'fish') {
         e.cooldown -= dt * (e.frozen ? .3 : 1);
-        if (e.cooldown < rule.warning && !e.aimTargets) {
+        if (e.cooldown < rule.warning * balance.warning && !e.aimTargets) {
           e.aimTargets = attackTargets(e, run, e.kind === 'hexer' || e.kind === 'dragon');
           if (e.kind === 'wizard') for (const target of e.aimTargets) { target.x = clamp(target.x + run.vx * .25, -52, 52); target.y = clamp(target.y + run.vy * .2, 2, 52); }
         }
-        if (e.cooldown <= 0) { this.launch(e, e.aimTargets || attackTargets(e, run), run, rule.speed); e.aimTargets = null; e.cooldown = rule.interval; }
+        if (e.cooldown <= 0) { this.launch(e, e.aimTargets || attackTargets(e, run), run, rule.speed); e.aimTargets = null; e.cooldown = rule.interval * balance.attackInterval; }
       }
       if (Math.abs(ahead) < 2.5 && Math.hypot(e.x - run.x, e.y - run.altitude) < e.radius) this.hooks.hurt();
     }
@@ -241,6 +244,7 @@ export class Battle {
   }
   startBoss(run) {
     this.boss = makeBoss(++this.encounters, run.distance); const b = this.boss;
+    const balance = balanceAt(run.distance); b.interval *= balance.attackInterval; b.cooldown *= balance.warning; b.warningTime = .65 * balance.warning;
     b.visual = createEnemy(b.kind); b.visual.scale.setScalar(b.scale); this.scene.add(b.visual); b.visual.userData.health.visible = b.visual.userData.healthBack.visible = false;
     for (const e of this.roamers) this.scene.remove(e.visual); this.roamers.length = 0;
     this.sigils(b); this.hooks.arena(true); this.shots.forEach(p => this.scene.remove(p.visual)); this.shots.length = 0;
@@ -250,7 +254,7 @@ export class Battle {
     const b = this.boss; if (!b) return;
     this.scene.remove(b.visual); b.sigils.forEach(s => this.scene.remove(s.visual)); this.boss = null;
     this.shots.forEach(p => this.scene.remove(p.visual)); this.shots.length = 0;
-    this.nextBoss = run.distance + 1800; this.killsAtBoss = run.kills; this.warning = false;
+    this.nextBoss = run.distance + balanceAt(run.distance).bossSpacing; this.killsAtBoss = run.kills; this.warning = false;
     if (outrun) award(run, 350, 15);
     this.hooks.notify(outrun ? 'BOSS OUTRUN · +350 · THE SKY IS YOURS' : 'THE HUNTER BREAKS AWAY · KEEP FLYING', 3, 5);
     this.hooks.arena(false); this.hooks.bossUI(null);
@@ -259,7 +263,7 @@ export class Battle {
     const b = this.boss;
     if (!b) {
       if (run.distance > this.nextBoss - 180 && !this.warning) { this.warning = true; this.hooks.notify('SOMETHING ENORMOUS IS HUNTING YOU…', 3, 4); this.hooks.sound.roar(); }
-      if (run.distance >= this.nextBoss || run.kills - this.killsAtBoss >= 16) this.startBoss(run);
+      if (run.distance >= this.nextBoss) this.startBoss(run);
       return;
     }
     moveBoss(b, run, dt);
@@ -276,7 +280,7 @@ export class Battle {
       this.hooks.notify('ENRAGED · FINISH IT OR BURN PAST', 2, 5); this.hooks.sound.roar();
     }
     if (!b.stagger) b.cooldown -= dt * (b.frozen ? .65 : 1);
-    if (b.cooldown < .65 && !b.aimTargets) {
+    if (b.cooldown < b.warningTime && !b.aimTargets) {
       b.aimTargets = attackTargets(b, run, b.kind === 'dragon' || b.kind === 'scarab');
       if (b.kind === 'wizard') for (const target of b.aimTargets) { target.x = clamp(target.x + run.vx * .3, -52, 52); target.y = clamp(target.y + run.vy * .25, 2, 52); }
       if (b.kind === 'serpent') b.aimTargets.push({ x: run.x, y: clamp(run.altitude + 12, 2, 52) }, { x: run.x, y: clamp(run.altitude - 12, 2, 52) });

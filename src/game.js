@@ -1,5 +1,6 @@
 import { spawnEnemies } from './foes.js';
 import { breakables, passageAt } from './landscape.js';
+import { balanceAt } from './pacing.js';
 export const RADIUS = 680;
 export const CHUNK = 64;
 export const ZONE_LENGTH = CHUNK * 20;
@@ -32,7 +33,7 @@ export const clamp = (x, min, max) => Math.min(max, Math.max(min, x));
 export const lerp = (a, b, t) => a + (b - a) * t;
 export function random(seed) { let n = seed >>> 0; return () => { n += 0x6D2B79F5; let t = n; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 export function zoneAt(distance) { return Math.floor(Math.max(0, distance) / ZONE_LENGTH) % ZONES.length; }
-export function difficultyAt(distance) { return Math.min(3, Math.max(0, distance) / 6400); }
+export function difficultyAt(distance) { return balanceAt(distance).difficulty; }
 export function flightSpeed(altitude, boosting, difficulty = 0) { return (boosting ? 102 : 40 + 36 * Math.exp(-Math.max(0, altitude - 1) / 7)) + difficulty * 3; }
 export function createRun(seed = 42) { return { seed, distance: 0, time: 0, x: 0, altitude: 3.5, vx: 0, vy: 0, speed: 30, power: 25, hp: 3, score: 0, chain: 0, chainTimer: 0, bestChain: 1, invulnerable: 2.5, boost: false, roll: 0, rollHeld: false, rollCooldown: 0, rollDirection: 1, shotCooldown: 0, weapon: 'fire', buffs: { rapid: 0, fury: 0, focus: 0, overdrive: 0 }, bosses: 0, spells: { fire: 1, frost: 0, storm: 1, wind: 1, echo: 0, magnet: 0 }, kills: 0, nearMisses: 0, tricks: 0, ended: false, events: [] }; }
 export function multiplier(run) { return Math.min(8, 1 + Math.floor(run.chain / 3)); }
@@ -56,8 +57,9 @@ export function updateRun(run, input, dt) {
   if (run.ended) return;
   dt = clamp(dt, 0, .05); run.time += dt;
   run.invulnerable = Math.max(0, run.invulnerable - dt); run.rollCooldown = Math.max(0, run.rollCooldown - dt); run.shotCooldown = Math.max(0, run.shotCooldown - dt);
-  run.vx = lerp(run.vx, input.steer * (run.boost ? 56 : 48), 1 - Math.exp(-(input.steer ? 28 : 36) * dt));
-  run.vy = lerp(run.vy, input.lift * (input.lift < 0 ? 29 : 25), 1 - Math.exp(-(input.lift ? 25 : 34) * dt));
+  const responseDt = dt * (input.controlRate || 1);
+  run.vx = lerp(run.vx, input.steer * (run.boost ? 56 : 48), 1 - Math.exp(-(input.steer ? 28 : 36) * responseDt));
+  run.vy = lerp(run.vy, input.lift * (input.lift < 0 ? 29 : 25), 1 - Math.exp(-(input.lift ? 25 : 34) * responseDt));
   run.x = clamp(run.x + run.vx * dt, -FLIGHT_HALF_WIDTH, FLIGHT_HALF_WIDTH); run.altitude = clamp(run.altitude + run.vy * dt, 1, MAX_ALTITUDE);
   if ((run.x <= -FLIGHT_HALF_WIDTH && run.vx < 0) || (run.x >= FLIGHT_HALF_WIDTH && run.vx > 0)) run.vx = 0;
   if ((run.altitude <= 1 && run.vy < 0) || (run.altitude >= MAX_ALTITUDE && run.vy > 0)) run.vy = 0;
@@ -72,7 +74,7 @@ export function updateRun(run, input, dt) {
   const rate = run.boost ? -15 : run.railing ? 8 : run.altitude < 3.5 ? 4.5 : .3;
   run.power = clamp(run.power + rate * dt, 0, 100);
   const dive = Math.max(0, -run.vy) * .35;
-  run.speed = lerp(run.speed, flightSpeed(run.altitude, run.boost, difficultyAt(run.distance)) + dive + (run.railing ? 18 : 0), 1 - Math.exp(-5 * dt));
+  run.speed = lerp(run.speed, flightSpeed(run.altitude, run.boost, input.difficulty ?? difficultyAt(run.distance)) + dive + (run.railing ? 18 : 0), 1 - Math.exp(-5 * dt));
   run.distance += run.speed * dt; run.score += run.speed * dt * .2;
   run.chainTimer = Math.max(0, run.chainTimer - dt); if (!run.chainTimer) run.chain = 0;
 }
@@ -91,14 +93,14 @@ export function segmentHitsSphere(from, to, center, radius) {
 }
 export function generateChunk(index, seed) {
   const rng = random(seed + index * 104729), start = index * CHUNK;
-  const zone = zoneAt(start), difficulty = difficultyAt(start), type = ZONES[zone].type;
+  const zone = zoneAt(start), balance = balanceAt(start), difficulty = balance.difficulty, type = ZONES[zone].type;
   const obstacles = [], pickups = [], enemies = [], rings = [];
   const safeLane = safeLaneAt(index, seed), rail = cliffRailAt(start);
   // Every row leaves a full flight lane clear. Outer architecture is decoration.
-  if (index > 1) {
+  if (index > 3) {
     for (let lane = -2; lane <= 2; lane++) {
-      if (lane === safeLane || (rail && lane === rail.side * 2) || rng() > .58 + difficulty * .09) continue;
-      obstacles.push({ x: lane * LANE_SPACING + (rng() - .5) * 3, s: start + 42 + (rng() - .5) * 8, width: 8 + rng() * 6, height: 7 + rng() * (type === 'canyon' ? 25 : 21), depth: 8 + rng() * 7, angle: (rng() - .5) * 1.4, type });
+      if (lane === safeLane || (rail && lane === rail.side * 2) || rng() > balance.obstacleChance) continue;
+      obstacles.push({ x: lane * LANE_SPACING + (rng() - .5) * 3, s: start + 42 + (rng() - .5) * 8, width: 8 + rng() * 6, height: 7 + rng() * (balance.obstacleHeight + (type === 'canyon' ? 4 : 0)), depth: 8 + rng() * 7, angle: (rng() - .5) * 1.4, type });
     }
   }
   const laneX = safeLane * LANE_SPACING;

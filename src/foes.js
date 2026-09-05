@@ -1,4 +1,5 @@
 // Encounter rules have no renderer dependencies, so generation and AI can be tested directly.
+import { balanceAt } from './pacing.js';
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 export const FOES = {
   stalker: { name: 'Dune stalker', hp: 5, radius: 2.4, interval: 2, warning: .7, speed: 48 },
@@ -11,10 +12,12 @@ export const FOES = {
   fish: { name: 'River fang', hp: 2, radius: 1.8, interval: Infinity, warning: 0, speed: 0 },
 };
 export function spawnEnemies(type, index, start, difficulty, rng, obstacles) {
-  if (index < 4 || index % 2) return [];
+  const balance = balanceAt(start);
+  if (start < 640 || index % 2 || rng() > balance.enemyChance) return [];
   const pools = { city: ['bandit', 'guard', 'wizard'], palace: ['guard', 'wizard', 'dragon'], desert: ['bandit', 'dragon', 'stalker'], canyon: ['dragon', 'bandit', 'brute'], river: ['fish', 'fish', 'wizard', 'guard'], farm: ['bandit', 'wizard', 'dragon'], ancient: ['hexer', 'dragon', 'wizard', 'brute'] };
-  const pool = pools[type] || pools.desert, kind = pool[Math.floor(rng() * pool.length)], rule = FOES[kind];
-  const count = kind === 'bandit' ? 4 + Math.floor(rng() * 3) : kind === 'fish' ? 3 : kind === 'guard' ? 2 : 1;
+  const unlocked = (pools[type] || pools.desert).filter(kind => !(kind === 'wizard' && start < 2500) && !(kind === 'dragon' && start < 5000) && !(kind === 'guard' && start < 1200));
+  const pool = unlocked.length ? unlocked : ['bandit'], kind = pool[Math.floor(rng() * pool.length)], rule = FOES[kind];
+  const count = kind === 'bandit' ? 2 + Math.floor(balance.strength * 3) + Math.floor(rng() * 2) : kind === 'fish' ? 2 + Number(balance.strength > .3) : kind === 'guard' ? 1 + Number(balance.strength > .3) : 1 + Number(rule.mobile && balance.strength > .65 && rng() < .45);
   const enemies = [];
   for (let i = 0; i < count; i++) {
     const side = i % 2 ? 1 : -1, s = start + 10 + i * 7;
@@ -23,7 +26,7 @@ export function spawnEnemies(type, index, start, difficulty, rng, obstacles) {
     if (kind === 'guard') { x = side * 59; y = 18 + rng() * 10; }
     if (kind === 'fish') { x = Math.sin(s / 180) * 21 + side * 11; y = -.8; }
     if (kind === 'bandit' && obstacles.some(o => Math.abs(x - o.x) < 13 && Math.abs(s - o.s) < 16)) x = side * 57;
-    enemies.push({ kind, x, y, s, hp: rule.hp + Math.min(2, Math.floor(difficulty)), radius: rule.radius, phase: rng() * Math.PI * 2, spawnDelay: i * .23 });
+    enemies.push({ kind, x, y, s, hp: rule.hp + Math.min(2, Math.floor(difficulty)), radius: rule.radius, phase: rng() * Math.PI * 2, spawnDelay: .6 * (1 - balance.strength) + i * .35 });
   }
   return enemies;
 }

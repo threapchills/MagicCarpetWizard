@@ -66,7 +66,7 @@ export function stepRace(a, input, dt) {
   if (a.elapsed >= RACE_LIMIT) { a.dnf = true; return 'timeout'; }
   if (a.stun > 0) { a.stun = Math.max(0, a.stun - dt); a.run.time += dt; record(a); return null; }
   const r = a.run, previous = { s: r.distance, x: r.x, y: r.altitude };
-  updateRun(r, { ...input, arena: true }, dt);
+  updateRun(r, { ...input, arena: true, difficulty: Math.min(3, Math.max(0, r.distance) / 6400) }, dt);
   const index = Math.floor(r.distance / CHUNK);
   for (let i = Math.max(0, index - 1); i <= index + 1; i++) {
     if (a.collisionChunks[i]?.obstacles.some(o => intersectsObstacle(r, o))) { resetAtGate(a); return 'crash'; }

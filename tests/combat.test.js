@@ -63,7 +63,7 @@ test('wind blasts clear incoming shots, stagger and push monsters, while attack 
 });
 
 test('scarab wards break once, never reform, and victory clears the arena once', () => {
-  const h = harness(); h.battle.encounters = 2; h.run.distance = 1400; h.battle.updateBoss(1 / 90, h.run);
+  const h = harness(); h.battle.encounters = 2; h.run.distance = h.battle.nextBoss; h.battle.updateBoss(1 / 90, h.run);
   const b = h.battle.boss, powerful = { kind: 'storm', damage: 100 };
   assert.ok(b && b.sigils.length === 2); h.battle.hit(b, powerful, h.run); assert.equal(b.hp, b.maxHp);
   for (const s of b.sigils) h.battle.hit(s, powerful, h.run); h.battle.updateBoss(1 / 90, h.run); assert.equal(b.shield, false);
@@ -109,14 +109,23 @@ test('bosses have independent speed, lower HP, frequent attacks and a genuine ou
 test('biomes spawn distinct hordes, towers, mages, dragons and river-only fish deterministically', () => {
   const seen = new Set();
   for (const type of ['city', 'palace', 'desert', 'canyon', 'river', 'farm', 'ancient']) for (let seed = 0; seed < 35; seed++) {
-    const enemies = spawnEnemies(type, 6, 384, 0, random(seed), []);
-    assert.deepEqual(enemies, spawnEnemies(type, 6, 384, 0, random(seed), []));
+    const enemies = spawnEnemies(type, 626, 40064, 6.9, random(seed), []);
+    assert.deepEqual(enemies, spawnEnemies(type, 626, 40064, 6.9, random(seed), []));
     for (const e of enemies) { seen.add(e.kind); assert.ok(FOES[e.kind]); if (e.kind === 'fish') assert.equal(type, 'river'); }
     if (enemies[0]?.kind === 'bandit') assert.ok(enemies.length >= 4);
     if (enemies[0]?.kind === 'guard') assert.ok(enemies.every(e => e.y >= 18 && Math.abs(e.x) === 59));
   }
   for (const kind of ['bandit', 'guard', 'wizard', 'dragon', 'fish']) assert.ok(seen.has(kind));
   for (const kind of [...seen, 'scarab', 'serpent']) { const model = createEnemy(kind); model.updateMatrixWorld(); model.traverse(o => { assert.ok(o.matrixWorld.elements.every(Number.isFinite)); }); }
+});
+
+test('early kills cannot summon a boss before its distance milestone or skip recovery', () => {
+  const h = harness(); h.run.distance = 1000; h.run.kills = 100;
+  h.battle.updateBoss(.01, h.run); assert.equal(h.battle.boss, null);
+  h.run.distance = h.battle.nextBoss; h.battle.updateBoss(.01, h.run); assert.ok(h.battle.boss);
+  h.battle.escapeBoss(h.run, true); h.run.kills += 100;
+  h.run.distance = h.battle.nextBoss - 1; h.battle.updateBoss(.01, h.run); assert.equal(h.battle.boss, null);
+  h.run.distance++; h.battle.updateBoss(.01, h.run); assert.ok(h.battle.boss); h.battle.clear();
 });
 test('fish leap once in an arc, ground troops stay grounded and mages move in world space', () => {
   const run = createRun(); run.altitude = 15; run.distance = 10;
