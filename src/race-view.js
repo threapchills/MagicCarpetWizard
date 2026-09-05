@@ -33,6 +33,14 @@ export class RaceView {
       }
       const pointer = new THREE.Mesh(new THREE.ConeGeometry(1.6, 3, 3), new THREE.MeshBasicMaterial({ color: '#fff6dc' }));
       pointer.position.y = gate.radius + 4; pointer.rotation.z = Math.PI; g.add(pointer);
+      const runes = new THREE.InstancedMesh(new THREE.OctahedronGeometry(.55), new THREE.MeshBasicMaterial({ color: '#c3ffe6', fog: false }), 12);
+      const transform = new THREE.Object3D();
+      for (let n = 0; n < 12; n++) {
+        const angle = n / 12 * Math.PI * 2;
+        transform.position.set(Math.cos(angle) * (gate.radius + 1.6), Math.sin(angle) * (gate.radius + 1.6), 0);
+        transform.rotation.z = angle; transform.scale.set(.65, 1.8, .65); transform.updateMatrix(); runes.setMatrixAt(n, transform.matrix);
+      }
+      g.add(runes); g.userData.runes = runes; g.userData.pointer = pointer;
       this.scene.add(g); this.gates.push(g);
     });
   }
@@ -41,7 +49,12 @@ export class RaceView {
     this.gates.forEach((visual, i) => {
       const gate = a.course.gates[i]; visual.visible = i >= a.nextGate && gate.s - a.run.distance < 520;
       placeOnWorld(visual, gate.x, gate.s, gate.y, a.run.distance);
-      if (i < this.gates.length - 1) visual.children[0].material.color.set(i === a.nextGate ? '#a6ffe3' : '#cfaa68');
+      const active = i === a.nextGate;
+      if (i < this.gates.length - 1) visual.children[0].material.color.set(active ? '#a6ffe3' : '#cfaa68').multiplyScalar(active ? 3.3 : 1);
+      visual.userData.runes.visible = active;
+      visual.userData.runes.rotation.z = a.elapsed * .35;
+      visual.userData.runes.material.color.set(i === this.gates.length - 1 ? '#ffd99c' : '#a6ffe3').multiplyScalar(3.5);
+      visual.userData.pointer.position.y = gate.radius + 4 + Math.sin(a.elapsed * 3) * .7;
     });
     const sample = a.countdown === 0 ? ghostAt(a.ghost?.samples, a.elapsed) : null;
     this.ghost.root.visible = !!sample && !a.finished && !a.dnf && Math.abs(sample[3] - a.run.distance) < 500;

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { RACE_LEVELS, createCourse, generateRaceChunk, routeAt, createAttempt, stepRace, ghostAt, RaceRecords, formatTime } from '../src/race.js';
+import { RACE_LEVELS, createCourse, generateRaceChunk, routeAt, createAttempt, stepRace, ghostAt, RaceRecords, formatTime, checkpointDelta } from '../src/race.js';
 import { RaceView } from '../src/race-view.js';
 import { CHUNK, obstacleExtents } from '../src/game.js';
 
@@ -90,4 +90,22 @@ test('ghost and gate visuals use spherical placement and clean up across hot-sea
   view.start(course, 0); assert.equal(scene.children.length, count);
   rival.finished = true; view.update(rival); assert.equal(view.ghost.root.visible, false);
   view.clear(); assert.equal(view.gates.length, 0); assert.equal(scene.children.length, 1);
+});
+
+test('checkpoint splits use exact crossings, survive resets and preserve older ghosts', () => {
+  const a = createAttempt(createCourse('easy', 42), 0, { splits: [6, 12, 18, 24] });
+  assert.equal(checkpointDelta(a), null); a.countdown = 0; a.elapsed = 5;
+  const gate = a.course.gates[0]; Object.assign(a.run, { distance: gate.s - .1, x: gate.x, altitude: gate.y });
+  assert.equal(stepRace(a, { steer: 0, lift: 0 }, STEP), 'gate');
+  assert.ok(a.splits[0] > 5 && a.splits[0] < 5 + STEP); assert.ok(checkpointDelta(a) < 0);
+  const split = a.splits[0], next = a.course.gates[1]; Object.assign(a.run, { distance: next.s - .1, x: 54, altitude: 54 });
+  assert.equal(stepRace(a, { steer: 0, lift: 0 }, STEP), 'miss'); assert.deepEqual(a.splits, [split]);
+  a.ghost = { time: 24, samples: [] }; assert.equal(checkpointDelta(a), null);
+  let data; const storage = { getItem: () => data, setItem: (_, v) => data = v };
+  const records = new RaceRecords(storage); records.sessions.easy = { seed: 42, best: [null, null] };
+  const complete = fly(a.course); records.complete(complete);
+  const saved = new RaceRecords(storage).get('easy').best[0];
+  assert.equal(saved.splits.length, a.course.gates.length); assert.equal(saved.splits.at(-1), saved.time);
+  const legacy = JSON.parse(data); delete legacy.easy.best[0].splits; data = JSON.stringify(legacy);
+  assert.equal(new RaceRecords(storage).get('easy').best[0].time, saved.time);
 });

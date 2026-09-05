@@ -13,6 +13,7 @@ Fly at **https://threapchills.github.io/MagicCarpetWizard/** once GitHub Pages d
 | Mouse + hold left click | Aim and cast spells |
 | 1 / 2 / 3 | Fireball / Lightning / Wind blast |
 | Q | Cycle spells |
+| R | Restart the journey, or retry the same race player and course; saved bests remain |
 | Tap Space | Barrel roll above 4 m; dodge enemy projectiles during the roll |
 | Hold Shift | Skyfire boost (25 power to start) |
 | Esc / P | Pause / resume |
@@ -56,6 +57,8 @@ Seven procedural zones advance every 1,280 m: the Amber City, Sultan’s Gardens
 The playable corridor is 108 m wide, with five winding safe-lane choices, a 54 m flight ceiling and a 680 m planet radius. Low-flight speed reaches 76 m/s before difficulty bonuses, while skyfire reaches 102 m/s; dives add momentum. Steering reaches more than 90% of its target speed within 100 ms and brakes rapidly on release. Spells travel faster to keep up with the carpet. Architecture uses varied footprints, heights, full-angle decorative rotations, irregular spacing and larger landmarks. Playable obstacles use rotated collision boxes that match their models. Side scenery stays outside the playable corridor, and every generated obstacle row preserves a clear lane.
 
 ## Hot-seat ghost races
+
+The active gate has a luminous rim and orbiting diamond runes. Passing a gate showers sparks around its rim; the finish gives a larger gold burst. The race HUD keeps the selected spell visible and reports each checkpoint's exact crossing time, or the gap ahead/behind the opponent when their ghost includes splits. Existing ghosts still play; newly saved personal bests include split timing. R starts a fresh countdown for the same player without changing the course or either best time.
 
 Choose **Race a friend** for two players taking turns on one keyboard. Easy (896 m) has broad gates and sparse obstacles, Medium (1,280 m) adds rooftop slaloms, and Hard (1,536 m) has tighter gates and dense canyon formations. Each difficulty has its own generated course and two local personal bests. Both players use identical layouts, flight rules, starting power and checkpoint rewards. Aim and cast in races to smash crates, urns and rocks; props reset for every attempt. Ghosts cannot be shot or collided with. Other biomes use timber, hay bales and ancient seals in adventure mode. Monsters and enclosed passages stay in adventure mode.
 

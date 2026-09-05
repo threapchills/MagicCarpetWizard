@@ -42,7 +42,7 @@ function sparkCloud(capacity, ratio) {
 
 export class MagicField {
   constructor(scene, ratio = 1) {
-    this.scene = scene; this.sparks = []; this.flashes = []; this.castLife = 0; this.trailClock = 0;
+    this.scene = scene; this.sparks = []; this.flashes = []; this.castLife = 0; this.trailClock = 0; this.wasBoosting = false;
     this.point = new THREE.Object3D(); this.color = new THREE.Color();
     this.burstCloud = sparkCloud(384, ratio); this.motes = sparkCloud(100, ratio);
     scene.add(this.burstCloud.visual, this.motes.visual);
@@ -56,7 +56,7 @@ export class MagicField {
     this.aura.visible = false;
   }
   clear() {
-    this.sparks.length = this.flashes.length = 0; this.castLife = this.trailClock = 0;
+    this.sparks.length = this.flashes.length = 0; this.castLife = this.trailClock = 0; this.wasBoosting = false;
     this.burstCloud.geometry.setDrawRange(0, 0); this.aura.visible = false;
     this.lights.forEach(l => l.intensity = 0);
   }
@@ -83,6 +83,15 @@ export class MagicField {
     this.emit(source.x, source.y, source.s, this.castColor, 7, .55);
     if (kind === 'storm') this.flash(source.x, source.y, source.s + 12, this.castColor, .65);
   }
+  checkpoint(x, y, s, radius, finish = false) {
+    const color = finish ? '#ffda8b' : '#a6ffe3';
+    // Burst around the gate rim, leaving the player's view through its center clear.
+    for (let i = 0; i < 24; i++) {
+      const angle = i / 24 * Math.PI * 2;
+      this.emit(x + Math.cos(angle) * radius, y + Math.sin(angle) * radius, s, color, finish ? 4 : 2, .7);
+    }
+    this.flash(x, y, s, color, finish ? 1.4 : .7);
+  }
   write(cloud, i, x, y, s, distance, tint, size, alpha) {
     placeOnWorld(this.point, x, s, y, distance);
     const p = this.point.position;
@@ -96,6 +105,13 @@ export class MagicField {
     placeOnWorld(light, x, s, y, distance); light.color.set(color); light.intensity = intensity; light.distance = reach;
   }
   update(dt, time, distance, run, bullets, environment, playing) {
+    if (dt > 0 && playing && run.boost && !this.wasBoosting) {
+      for (let i = 0; i < 20; i++) {
+        const angle = i / 20 * Math.PI * 2;
+        this.emit(run.x + Math.cos(angle) * 3, run.altitude + Math.sin(angle) * 2, distance - 3, '#a6ffe3', 2, .8);
+      }
+    }
+    if (dt > 0 && playing) this.wasBoosting = run.boost;
     this.castLife = Math.max(0, this.castLife - dt);
     for (let i = this.flashes.length - 1; i >= 0; i--) { this.flashes[i].life -= dt; if (this.flashes[i].life <= 0) this.flashes.splice(i, 1); }
     this.trailClock += playing ? dt : 0;
@@ -120,7 +136,7 @@ export class MagicField {
     const moteTint = night > .4 ? [.25, .85, .65] : [.85, .62, .25];
     for (let i = 0; i < 100; i++) {
       const [a, b, c, d] = this.seeds[i], phase = time * (.4 + d) + a * 20;
-      this.write(this.motes, i, run.x + (a - .5) * 125 + Math.sin(phase) * 2,
+      this.write(this.motes, i, ((a * 160 + time * (1.5 + d * 2)) % 160) - 80 + Math.sin(phase) * 2,
         2 + b * (night > .4 ? 13 : 32) + Math.cos(phase) * 1.5, distance + 160 - ((c * 190 + distance) % 190), distance,
         moteTint, .12 + d * .18, (windy ? .10 : .30 + night * .5) * (.55 + Math.sin(phase * 2) * .35));
     }

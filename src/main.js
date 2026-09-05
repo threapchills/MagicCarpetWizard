@@ -11,7 +11,7 @@ import { Battle } from './battle.js';
 import { WEAPONS } from './combat.js';
 import { WeatherField, weatherAt } from './weather.js';
 import { MagicField } from './magic.js';
-import { RACE_LEVELS, RaceRecords, createCourse, createAttempt, generateRaceChunk, stepRace, formatTime } from './race.js';
+import { RACE_LEVELS, RaceRecords, createCourse, createAttempt, generateRaceChunk, stepRace, formatTime, checkpointDelta } from './race.js';
 import { RaceView } from './race-view.js';
 import './race.css';
 
@@ -197,6 +197,10 @@ function updateRaceUI() {
   $('race-rider').textContent = `PLAYER ${a.player + 1} · ${a.course.name.toUpperCase()}`;
   $('race-target').textContent = gate ? `${a.nextGate === a.course.gates.length - 1 ? 'FINISH' : 'GATE ' + (a.nextGate + 1) + ' / ' + a.course.gates.length} · ${Math.max(0, Math.ceil(gate.s - run.distance))} m · ${Math.round(gate.y)} m HIGH` : 'FINISHED';
   $('race-ghost-label').textContent = a.ghost ? `P${2 - a.player} GHOST · ${formatTime(a.ghost.time)}` : 'NO OPPONENT GHOST YET · SET THE FIRST TIME';
+  const delta = checkpointDelta(a);
+  const splitText = delta !== null ? `GATE ${a.nextGate} · ${delta <= 0 ? '−' : '+'}${Math.abs(delta).toFixed(3)}s · ${Math.abs(delta) < .0005 ? 'LEVEL' : delta < 0 ? 'AHEAD' : 'BEHIND'}` : a.nextGate ? `GATE ${a.nextGate} · ${formatTime(a.splits.at(-1))} · +12 SKYFIRE` : 'CHECKPOINTS REFILL SKYFIRE · R TO RETRY';
+  if ($('race-split').textContent !== splitText) $('race-split').textContent = splitText;
+  $('race-split').classList.toggle('behind', delta > 0);
   const countdown = a.countdown > 0 ? String(Math.ceil(a.countdown)) : a.elapsed < .65 ? 'GO!' : '';
   $('race-countdown').hidden = !countdown || state !== 'playing';
   if ($('race-countdown').textContent !== countdown) $('race-countdown').textContent = countdown;
@@ -204,8 +208,12 @@ function updateRaceUI() {
 function raceStep(input) {
   const event = stepRace(raceAttempt, input, STEP);
   if (event === 'crash' || event === 'miss') { trailHistory.length = 0; sound.hit(); flashTime = .3; $('damage-flash').style.opacity = '1'; notify(event === 'miss' ? 'Missed gate · back to checkpoint' : 'Clipped it · back to checkpoint', 1.6, 3); }
-  if (event === 'gate') { sound.trick(); particleBurst(run.x, run.altitude, run.distance, '#abffe1', 22); }
-  if (event === 'finish' || event === 'timeout') { if (event === 'finish') sound.trick(); finishRace(); }
+  if (event === 'gate' || event === 'finish') {
+    const g = raceAttempt.course.gates[raceAttempt.nextGate - 1];
+    sound.trick(); magic.checkpoint(g.x, g.y, g.s, g.radius, event === 'finish');
+    if (event === 'gate') notify(`GATE ${raceAttempt.nextGate} CLEARED · +12 SKYFIRE`, 1.2, 2);
+  }
+  if (event === 'finish' || event === 'timeout') finishRace();
 }
 function openHelp() { if (!$('help-screen').hidden) return; helpWasRunning = state === 'playing'; if (helpWasRunning) pauseGame(); $('pause-screen').hidden = true; $('help-screen').hidden = false; $('close-help').focus(); }
 function closeHelp() { $('help-screen').hidden = true; if (helpWasRunning) resume(); else if (state === 'paused') $('pause-screen').hidden = false; }
@@ -236,6 +244,7 @@ document.addEventListener('keydown', e => {
   const nativeControl = ['BUTTON', 'INPUT', 'SUMMARY'].includes(e.target?.tagName);
   if (!nativeControl && ['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
   if (!e.repeat) {
+    if (e.code === 'KeyR' && !nativeControl && $('help-screen').hidden && ['playing', 'paused', 'ended', 'race-ended'].includes(state)) { e.preventDefault(); raceAttempt ? startRace(raceAttempt.player) : begin(); return; }
     if (e.code === 'Escape' || e.code === 'KeyP') { if (!$('help-screen').hidden) closeHelp(); else if (state === 'playing') pauseGame(); else if (state === 'paused') resume(); return; }
     if (e.code === 'Enter' && !nativeControl && $('help-screen').hidden && (state === 'menu' || state === 'ended')) { e.preventDefault(); begin(); return; }
     if (e.code === 'Enter' && !nativeControl && $('help-screen').hidden && ['race-setup', 'race-ended'].includes(state)) { e.preventDefault(); startRace(); return; }

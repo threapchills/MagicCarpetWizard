@@ -40,7 +40,7 @@ export function generateRaceChunk(index, course) {
 }
 export function createAttempt(course, player, ghost = null) {
   const run = createRun(course.seed); run.power = 45; run.invulnerable = 0;
-  const attempt = { course, player, ghost, run, countdown: 3, elapsed: 0, nextGate: 0, crashes: 0, stun: 0, finished: false, dnf: false, samples: [], recordAt: 0 };
+  const attempt = { course, player, ghost, run, countdown: 3, elapsed: 0, nextGate: 0, crashes: 0, stun: 0, finished: false, dnf: false, splits: [], samples: [], recordAt: 0 };
   attempt.collisionChunks = Array.from({ length: Math.ceil(course.length / CHUNK) }, (_, i) => generateRaceChunk(i, course));
   record(attempt, true); return attempt;
 }
@@ -76,6 +76,7 @@ export function stepRace(a, input, dt) {
     const fraction = clamp((gate.s - previous.s) / (r.distance - previous.s), 0, 1);
     const x = lerp(previous.x, r.x, fraction), y = lerp(previous.y, r.altitude, fraction);
     if (Math.hypot(x - gate.x, y - gate.y) > gate.radius - .75) { resetAtGate(a); return 'miss'; }
+    a.splits.push(a.elapsed - dt * (1 - fraction));
     a.nextGate++; r.power = Math.min(100, r.power + 12);
     if (a.nextGate === a.course.gates.length) {
       a.elapsed -= dt * (1 - fraction); Object.assign(r, { distance: gate.s, x, altitude: y });
@@ -98,6 +99,10 @@ export function formatTime(seconds) {
   const ms = Math.round(seconds * 1000);
   return `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, '0')}.${String(ms % 1000).padStart(3, '0')}`;
 }
+export function checkpointDelta(attempt) {
+  const i = attempt.nextGate - 1, rival = attempt.ghost?.splits?.[i];
+  return i >= 0 && Number.isFinite(rival) ? attempt.splits[i] - rival : null;
+}
 export class RaceRecords {
   constructor(storage) {
     this.sessions = {};
@@ -116,12 +121,14 @@ export class RaceRecords {
   complete(a) {
     const s = this.get(a.course.level), old = s.best[a.player];
     if (!a.finished || a.dnf || s.seed !== a.course.seed || (old && a.elapsed >= old.time)) return false;
-    s.best[a.player] = { time: a.elapsed, samples: a.samples.map(p => p.slice()) }; this.save(); return true;
+    s.best[a.player] = { time: a.elapsed, splits: a.splits.slice(), samples: a.samples.map(p => p.slice()) }; this.save(); return true;
   }
   save() { try { this.storage.setItem('mcw-races-v2', JSON.stringify(this.sessions)); } catch { /* The match still works when storage is full or disabled. */ } }
 }
 function validRecord(r, course) {
   if (!r || !Number.isFinite(r.time) || r.time <= 0 || r.time > RACE_LIMIT || !Array.isArray(r.samples) || r.samples.length < 2 || r.samples.length > 12000) return false;
+  // Older ghosts remain usable; split timing is optional and never reconstructed across crashes.
+  if (r.splits !== undefined && (!Array.isArray(r.splits) || r.splits.length !== course.gates.length || r.splits.some((t, i) => !Number.isFinite(t) || t <= (r.splits[i - 1] || 0) || t > r.time))) return false;
   let last = -1;
   for (const p of r.samples) {
     if (!Array.isArray(p) || p.length < 8 || p.length > 9 || !p.every(Number.isFinite) || p[0] <= last || p[0] > r.time || Math.abs(p[1]) > 54 || p[2] < 1 || p[2] > 54 || p[3] < 0 || p[3] > course.length || Math.abs(p[4]) > 56 || Math.abs(p[5]) > 29 || p[6] < 0 || p[6] > .85 || Math.abs(p[7]) !== 1) return false;

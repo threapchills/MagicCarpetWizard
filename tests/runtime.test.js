@@ -100,6 +100,13 @@ test('application boots, flies, casts, rolls once per press, pauses, resumes and
     advance(3.2); for (let i = 0; i < 8; i++) { approachNextGate(); advance(.03); }
     assert.equal(raceSnapshot().state, 'race-ended'); assert.ok(raceSnapshot().records[1] > 0);
     elements.get('race-next').onclick(); assert.equal(raceSnapshot().player, 0); assert.equal(raceSnapshot().ghost, true);
+    advance(3.1); const savedTimes = raceSnapshot().records;
+    dispatch('keydown', { code: 'KeyR' });
+    assert.equal(raceSnapshot().player, 0); assert.equal(raceSnapshot().seed, seed); assert.equal(raceSnapshot().elapsed, 0);
+    assert.equal(raceSnapshot().countdown, 3); assert.deepEqual(raceSnapshot().records, savedTimes); assert.equal(snapshot().shots, 0);
+    advance(.2); const retryCountdown = raceSnapshot().countdown;
+    dispatch('keydown', { code: 'KeyR', repeat: true }); assert.equal(raceSnapshot().countdown, retryCountdown);
+    dispatch('keyup', { code: 'KeyR' });
     elements.get('pause').onclick(); elements.get('pause-menu').onclick(); assert.equal(raceSnapshot().state, 'race-setup');
     elements.get('race-new').onclick(); assert.deepEqual(raceSnapshot().records, [undefined, undefined]);
     elements.get('race-back').onclick(); elements.get('start').onclick(); advance(.1);

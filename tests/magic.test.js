@@ -53,3 +53,17 @@ test('glow uses quarter-size targets, draws the world once, then composites ink 
     ink.target.dispose(); ink.glowA.dispose(); ink.glowB.dispose();
   }
 });
+
+test('motes stay in the world when steering and boost ignition fires once per activation', () => {
+  const magic = new MagicField(new THREE.Scene()), run = createRun();
+  magic.update(.01, 10, 500, run, [], {}, true);
+  const positions = magic.motes.positions.slice(); run.x = 42; run.altitude = 35;
+  magic.update(0, 10, 500, run, [], {}, true);
+  assert.deepEqual(magic.motes.positions, positions);
+  run.boost = true; magic.update(.001, 10, 500, run, [], {}, true);
+  assert.equal(magic.sparks.length, 40);
+  magic.update(.001, 10, 500, run, [], {}, true); assert.equal(magic.sparks.length, 40);
+  magic.clear(); magic.checkpoint(0, 20, 600, 13);
+  assert.equal(magic.sparks.length, 48);
+  assert.ok(magic.sparks.every(p => Math.abs(Math.hypot(p.x, p.y - 20) - 13) < 1e-6));
+});

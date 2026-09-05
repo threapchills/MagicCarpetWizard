@@ -15,6 +15,7 @@ export class InkRenderer {
     this.uniforms = {
       picture: { value: this.target.texture }, depth: { value: this.target.depthTexture },
       glow: { value: this.glowB.texture },
+      hdr: { value: this.hdr },
       pixel: { value: new THREE.Vector2(1, 1) }, nearPlane: { value: camera.near }, farPlane: { value: camera.far },
     };
     const geometry = new THREE.BufferGeometry();
@@ -53,6 +54,7 @@ export class InkRenderer {
         uniform sampler2D picture;
         uniform sampler2D depth;
         uniform sampler2D glow;
+        uniform bool hdr;
         uniform vec2 pixel;
         uniform float nearPlane;
         uniform float farPlane;
@@ -82,6 +84,9 @@ export class InkRenderer {
           // absorb the ink. Fine color details use a lighter stroke weight.
           float distanceFade=1.-smoothstep(190.,440.,nearest);
           float edge=max(depthEdge,colorEdge*.55)*distanceFade;
+          // Preserve luminous cores inside narrow spells and runes. Neighboring
+          // background pixels still carry their black silhouette contour.
+          if(hdr) edge*=1.-.82*smoothstep(1.8,3.,max(color.r,max(color.g,color.b)));
           color+=texture2D(glow,vUv).rgb*.32;
           color=mix(color,vec3(.001),edge);
           gl_FragColor=vec4(max(color,vec3(0.)),1.);
