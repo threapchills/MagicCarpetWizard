@@ -1,61 +1,96 @@
 import { AmbientEngine } from './ambience.js';
+import { SampleEffects } from './sample-effects.js';
 
 export class Soundscape {
-  constructor() { this.enabled = false; this.ctx = null; this.paused = false; this.ambient = null; }
-  async toggle() {
-    this.enabled = !this.enabled;
-    if (this.enabled) {
-      try {
-        if (!this.ctx) {
-          this.ctx = new (window.AudioContext || window.webkitAudioContext)();
-          this.master = this.ctx.createGain(); this.master.gain.value = .8;
-          this.ambienceBus = this.ctx.createGain(); this.ambienceBus.gain.value = this.paused ? 0 : .9;
-          this.effectBus = this.ctx.createGain(); this.effectBus.gain.value = 1;
-          const limiter = this.ctx.createDynamicsCompressor();
-          limiter.threshold.value = -10; limiter.knee.value = 12; limiter.ratio.value = 5; limiter.attack.value = .005; limiter.release.value = .25;
-          this.ambienceBus.connect(this.master); this.effectBus.connect(this.master); this.master.connect(limiter); limiter.connect(this.ctx.destination);
-          this.ambient = new AmbientEngine(this.ctx, this.ambienceBus, { baseUrl: new URL('./audio/slumbr/', document.baseURI).href });
-        }
-        await this.ctx.resume();
-        this.master.gain.setTargetAtTime(this.enabled ? .8 : 0, this.ctx.currentTime, .08);
-        this.ambient.setEnabled(this.enabled);
-      } catch { this.enabled = false; }
-    } else if (this.ctx) {
-      this.master.gain.setTargetAtTime(0, this.ctx.currentTime, .04);
-      this.ambient.setEnabled(false);
+  constructor({ contextFactory, baseUrl, fetcher, storage } = {}) {
+    this.enabled = false; this.ctx = null; this.paused = false; this.ambient = null; this.effects = null; this.epoch = 0; this.error = false;
+    this.contextFactory = contextFactory || (() => new (window.AudioContext || window.webkitAudioContext)());
+    this.baseUrl = baseUrl; this.fetcher = fetcher; this.environment = {};
+    this.muted = false; this.ambienceVolume = .85; this.effectsVolume = .8;
+    try {
+      this.storage = storage || globalThis.localStorage;
+      this.muted = this.storage?.getItem('mcw-muted') === 'true';
+      for (const key of ['ambienceVolume', 'effectsVolume']) {
+        const value = this.storage?.getItem('mcw-' + key);
+        if (value != null && Number.isFinite(Number(value))) this[key] = Math.max(0, Math.min(1, Number(value)));
+      }
+    } catch { /* Audio works without preference storage. */ }
+  }
+  save(key, value) { try { this.storage?.setItem('mcw-' + key, String(value)); } catch { /* Optional. */ } }
+  async start() {
+    if (this.muted) return false;
+    const epoch = ++this.epoch, wasEnabled = this.enabled;
+    try {
+      if (!this.ctx) {
+        this.ctx = this.contextFactory();
+        this.master = this.ctx.createGain(); this.master.gain.value = 0;
+        this.ambienceBus = this.ctx.createGain(); this.effectBus = this.ctx.createGain();
+        const limiter = this.ctx.createDynamicsCompressor();
+        limiter.threshold.value = -3; limiter.knee.value = 3; limiter.ratio.value = 8; limiter.attack.value = .003; limiter.release.value = .18;
+        this.ambienceBus.connect(this.master); this.effectBus.connect(this.master); this.master.connect(limiter); limiter.connect(this.ctx.destination);
+        const base = this.baseUrl || new URL('./audio/', document.baseURI).href;
+        this.ambient = new AmbientEngine(this.ctx, this.ambienceBus, { baseUrl: new URL('slumbr/', base).href, fetcher: this.fetcher });
+        this.effects = new SampleEffects(this.ctx, this.effectBus, { baseUrl: new URL('effects/', base).href, fetcher: this.fetcher });
+      }
+      // Called directly from Take Flight / M, before awaiting any fetch, so the
+      // browser receives the user's audio-unlock gesture synchronously.
+      const resume = this.ctx.resume();
+      this.enabled = true; this.error = false;
+      if (!wasEnabled) { this.ambient.failed.clear(); this.effects.failed.clear(); this.ambient.setEnabled(true); }
+      this.effects.setEnabled(!this.paused);
+      this.applyMix(); this.ambient.update(1, this.environment); void this.effects.preload();
+      await resume;
+      if (epoch !== this.epoch || this.muted) return false;
+      this.master.gain.setTargetAtTime(.9, this.ctx.currentTime, .06);
+      return true;
+    } catch {
+      if (epoch === this.epoch) { this.enabled = false; this.error = true; this.ambient?.setEnabled(false); this.effects?.setEnabled(false); }
+      return false;
     }
-    return this.enabled;
+  }
+  async toggle() {
+    this.muted = this.enabled; this.save('muted', this.muted);
+    if (!this.muted) return this.start();
+    this.epoch++; this.enabled = false;
+    if (this.ctx) this.master.gain.setTargetAtTime(0, this.ctx.currentTime, .025);
+    this.ambient?.setEnabled(false); this.effects?.setEnabled(false); return false;
+  }
+  applyMix() {
+    if (!this.ctx) return;
+    this.ambienceBus.gain.setTargetAtTime(this.paused ? 0 : this.ambienceVolume, this.ctx.currentTime, .10);
+    this.effectBus.gain.setTargetAtTime(this.paused ? 0 : this.effectsVolume, this.ctx.currentTime, .04);
+  }
+  setVolume(kind, value) {
+    if (!['ambience', 'effects'].includes(kind) || !Number.isFinite(value)) return;
+    const key = kind + 'Volume'; this[key] = Math.max(0, Math.min(1, value)); this.save(key, this[key]); this.applyMix();
   }
   setPaused(paused) {
-    this.paused = paused;
-    if (this.ctx) this.ambienceBus.gain.setTargetAtTime(paused ? 0 : .9, this.ctx.currentTime, .16);
+    this.paused = paused; this.applyMix(); this.effects?.setEnabled(this.enabled && !paused);
   }
-  tone(freq, duration = .3, type = 'sine', gain = .06, slide = 1) {
-    if (!this.enabled || !this.ctx || this.paused) return;
-    const t = this.ctx.currentTime, osc = this.ctx.createOscillator(), envelope = this.ctx.createGain();
-    osc.type = type; osc.frequency.setValueAtTime(freq, t); osc.frequency.exponentialRampToValueAtTime(Math.max(20, freq * slide), t + duration);
-    envelope.gain.setValueAtTime(0, t); envelope.gain.linearRampToValueAtTime(gain, t + .008); envelope.gain.exponentialRampToValueAtTime(.001, t + duration);
-    osc.connect(envelope); envelope.connect(this.effectBus); osc.start(); osc.stop(t + duration + .02);
-    osc.onended = () => { osc.disconnect(); envelope.disconnect(); };
+  play(cue) { if (this.enabled && !this.paused) void this.effects?.play(cue); }
+  spell(kind = 'fire') { this.play(kind); }
+  impact(kind = 'fire') { this.play(kind + 'Impact'); }
+  collect() { this.play('collect'); }
+  trick() { this.play('trick'); }
+  hit() { this.play('hit'); }
+  kill() { this.play('kill'); }
+  death() { this.play('death'); }
+  roar() { this.play('roar'); }
+  thunder() { this.play('thunder'); }
+  status() {
+    if (this.error) return 'Audio could not start · press M to retry';
+    if (this.muted) return 'Sound muted · press M to enable';
+    if (!this.enabled) return 'Sound starts when you take flight · M to preview';
+    if (this.ctx?.state === 'suspended') return 'Audio waiting · press M to retry';
+    if (this.paused) return 'Sound paused with the game';
+    if (!this.ambienceVolume) return 'Ambience volume is at zero';
+    const audible = [...(this.ambient?.voices || [])].filter(v => v.asset === this.ambient.layers.get(v.role)?.asset).length;
+    if (audible) return `Ambience playing · ${audible} active layers`;
+    if (this.ambient?.failed.size) return 'Ambience unavailable · toggle M to retry';
+    return 'Loading ambience…';
   }
-  collect() { this.tone(880, .16, 'sine', .035, 1.5); }
-  noise(duration, frequency, gain) {
-    if (!this.enabled || !this.ctx || this.paused) return;
-    const t = this.ctx.currentTime;
-    if (!this.noiseBuffer) { this.noiseBuffer = this.ctx.createBuffer(1, this.ctx.sampleRate, this.ctx.sampleRate); const data = this.noiseBuffer.getChannelData(0); for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1; }
-    const source = this.ctx.createBufferSource(), filter = this.ctx.createBiquadFilter(), envelope = this.ctx.createGain();
-    source.buffer = this.noiseBuffer; filter.type = 'lowpass'; filter.frequency.setValueAtTime(frequency, t); filter.frequency.exponentialRampToValueAtTime(80, t + duration);
-    envelope.gain.setValueAtTime(gain, t); envelope.gain.exponentialRampToValueAtTime(.001, t + duration);
-    source.connect(filter); filter.connect(envelope); envelope.connect(this.effectBus); source.start(); source.stop(t + duration);
-    source.onended = () => { source.disconnect(); filter.disconnect(); envelope.disconnect(); };
-  }
-  spell(kind = 'fire') { this.noise(kind === 'wind' ? .35 : .16, kind === 'storm' ? 8000 : 1600, .12); this.tone(kind === 'storm' ? 620 : 180, .18, 'sawtooth', .035, .3); }
-  impact(kind = 'fire') { this.noise(.26, kind === 'storm' ? 6500 : 1400, .16); this.tone(85, .25, 'sine', .1, .35); }
-  roar() { this.noise(.9, 520, .2); this.tone(65, .8, 'sawtooth', .07, .45); }
-  hit() { this.tone(120, .25, 'sawtooth', .035, .3); }
-  kill() { this.noise(.35, 1800, .15); this.tone(95, .3, 'triangle', .08, .3); }
-  trick() { this.tone(660, .5, 'sine', .045, 2); }
   update(dt, environment) {
+    this.environment = environment;
     if (!this.enabled || !this.ambient) return;
     if (this.paused !== !!environment.paused) this.setPaused(!!environment.paused);
     if (!this.paused) this.ambient.update(dt, environment);

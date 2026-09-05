@@ -111,6 +111,7 @@ function setArena(active) {
 function begin() {
   windowFocused = true;
   sound.setPaused(false);
+  void sound.start();
   clearWorld(); run = createRun(Math.floor(Math.random() * 1000000)); state = 'playing'; lastZone = 0;
   keys.clear(); shootHeld = false; bannerTime = toastTime = flashTime = hitTime = accumulator = trailClock = particleClock = 0;
   $('damage-flash').style.opacity = '0'; $('crosshair').classList.remove('hit', 'locked');
@@ -118,7 +119,6 @@ function begin() {
   for (const id of ['hud', 'pause', 'crosshair']) $(id).hidden = false;
   document.body.classList.add('playing'); $('zone-banner').classList.remove('show'); updateSpellTray(); ensureChunks(0, run.seed);
   notify('1 Fireball · 2 Lightning · 3 Wind blast · hold click to cast', 5); canvas.focus();
-  if (sound.ctx && sound.enabled) sound.ctx.resume();
 }
 function pauseGame() { if (state !== 'playing') return; sound.setPaused(true); state = 'paused'; accumulator = 0; keys.clear(); shootHeld = false; $('pause-screen').hidden = false; $('crosshair').hidden = true; document.body.classList.remove('playing', 'boosting'); $('resume').focus(); }
 function resume() { if (state !== 'paused') return; sound.setPaused(false); state = 'playing'; accumulator = 0; $('pause-screen').hidden = true; $('crosshair').hidden = false; document.body.classList.add('playing'); }
@@ -140,7 +140,21 @@ function openHelp() { if (!$('help-screen').hidden) return; helpWasRunning = sta
 function closeHelp() { $('help-screen').hidden = true; if (helpWasRunning) resume(); else if (state === 'paused') $('pause-screen').hidden = false; }
 $('start').onclick = begin; $('restart').onclick = begin; $('pause-restart').onclick = begin; $('resume').onclick = resume; $('pause').onclick = pauseGame; $('back-menu').onclick = menu;
 $('help-button').onclick = openHelp; $('close-help').onclick = closeHelp; $('guide-fly').onclick = closeHelp;
-$('sound').onclick = async () => { const on = await sound.toggle(); $('sound').classList.toggle('sound-on', on); $('sound').setAttribute('aria-label', `Turn ambience and effects ${on ? 'off' : 'on'}`); };
+function updateAudioUI() {
+  $('sound').classList.toggle('sound-on', sound.enabled);
+  $('sound').setAttribute('aria-label', sound.enabled ? 'Mute sound' : 'Enable ambience and effects');
+  $('sound').setAttribute('aria-pressed', String(sound.enabled));
+  $('sound').title = sound.status();
+  $('audio-status').textContent = sound.status();
+  $('audio-controls').hidden = !['menu', 'paused'].includes(state) || !$('help-screen').hidden;
+  for (const kind of ['ambience', 'effects']) {
+    const value = Math.round(sound[kind + 'Volume'] * 100);
+    $(kind + '-volume').value = value; $(kind + '-level').textContent = value + '%';
+  }
+}
+$('sound').onclick = async () => { await sound.toggle(); updateAudioUI(); };
+for (const kind of ['ambience', 'effects']) $(kind + '-volume').addEventListener('input', e => { sound.setVolume(kind, Number(e.target.value) / 100); updateAudioUI(); });
+updateAudioUI();
 document.addEventListener('keydown', e => {
   if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
   if (!e.repeat) {
@@ -249,7 +263,7 @@ function updateAtmosphere(dt, distance) {
   sky.sun.visible = night < .7; sky.moon.visible = night > .2; sky.stars.material.opacity = night * .8;
   sky.sun.position.y = 35 + daylight * 115; sky.clouds.rotation.y += dt * (wind * .016);
   sky.lanterns.children.forEach((lantern, i) => { lantern.position.y = lantern.userData.baseY + Math.sin(globalTime * .3 + i) * 2; lantern.rotation.z = Math.sin(globalTime * .5 + i) * .07; });
-  if (weatherField.update(globalTime, distance, state === 'menu' ? 0 : run.x, state === 'menu' ? 8 : run.altitude, z.type, conditions)) sound.roar();
+  if (weatherField.update(globalTime, distance, state === 'menu' ? 0 : run.x, state === 'menu' ? 8 : run.altitude, z.type, conditions)) sound.thunder();
   sunlight.intensity += weatherField.flash * dt * 12;
   return `${night > .6 ? '☾ MOONLIT' : daylight > .85 ? '✦ DAYLIGHT' : '✦ GOLDEN HOUR'} · ${sand ? 'SANDSTORM' : storm ? 'THUNDERSTORM' : raining ? 'DRIVING RAIN' : wind > .5 ? 'SWIRLING WINDS' : 'CLEAR SKIES'}`;
 
@@ -310,6 +324,7 @@ function updateCamera(dt) {
   camera.fov = lerp(camera.fov, state === 'menu' ? 49 : run.boost ? 78 : 60 + clamp((run.speed - 40) * .2, 0, 10), 1 - Math.exp(-dt * 5)); camera.updateProjectionMatrix();
 }
 function updateUI(weather) {
+  updateAudioUI();
   $('weather').textContent = weather; $('zone-name').textContent = ZONES[zoneAt(state === 'menu' ? menuDistance : run.distance)].name;
   if (state !== 'playing') return;
   $('distance').textContent = Math.floor(run.distance).toLocaleString(); $('score').textContent = Math.floor(run.score).toLocaleString();
@@ -370,7 +385,7 @@ function frame(now) {
   uiClock += dt; if (uiClock >= .1) { updateUI(weather); uiClock = 0; }
   ink.render(scene, camera);
   if (firstFrame) { firstFrame = false; $('loading').style.opacity = '0'; setTimeout(() => $('loading').hidden = true, 650); }
-  if (playing && run.ended) { state = 'dying'; deathTime = .85; shootHeld = false; $('crosshair').hidden = true; blood.burst(run.x, run.altitude + 1, run.distance, 46); }
+  if (playing && run.ended) { state = 'dying'; deathTime = .85; shootHeld = false; $('crosshair').hidden = true; sound.death(); blood.burst(run.x, run.altitude + 1, run.distance, 46); }
   if (state === 'dying') { deathTime -= worldDt; carpet.body.rotation.z += (1 - deathTime / .85) * .6; if (deathTime <= 0) finish(); }
   requestAnimationFrame(frame);
 }

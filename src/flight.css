@@ -40,6 +40,13 @@ body.playing .spell-tray{pointer-events:none}
 #boss-phase{font-size:12px;letter-spacing:.8px;color:#ffc6a8}
 .kofi-support{display:inline-block;margin-top:16px;padding:8px 12px;border:1px solid #dfbd8055;border-radius:6px;font-size:13px;color:#f1dbb7;text-decoration:none;background:#18344144}
 .kofi-support:hover{border-color:#f4d29a;background:#18344188}
+.audio-controls{position:fixed;right:42px;bottom:100px;z-index:13;width:255px;padding:12px 16px;background:#162e3bea;border:1px solid #efcf9755;border-radius:8px;color:#f3e1bf;font-size:14px}
+.audio-controls summary{cursor:pointer;list-style:none;letter-spacing:1px}
+.audio-controls label{display:flex;justify-content:space-between;margin:18px 0 6px}
+.audio-controls output{color:#b9e6d6}
+.audio-controls input{width:100%;accent-color:#a5ddcc;cursor:pointer}
+.audio-controls p{font-size:12px;line-height:1.5;color:#d3dfd4;margin:13px 0 0}
+@media(max-width:800px){.audio-controls{right:18px;bottom:65px;width:230px}}
 @media(max-width:800px){#boss-hud{top:185px;width:58vw}#boss-name{font-size:12px}.spell-tray{bottom:206px;max-width:90vw}#active-spell{bottom:183px}#combat-buffs{bottom:285px;font-size:12px}}
 @media(max-width:800px){.route-progress{top:148px;width:180px}.run-stats{top:196px}.chain{top:200px}#roll-ready{bottom:146px}.route-progress>span{font-size:9px}}
 @media(prefers-reduced-motion:reduce){.loading-star{animation:none}#crosshair,.route-progress i{transition:none}body.boosting #vignette{box-shadow:none}}

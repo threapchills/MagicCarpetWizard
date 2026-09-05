@@ -16,7 +16,7 @@ Fly at **https://threapchills.github.io/MagicCarpetWizard/** once GitHub Pages d
 | Tap Space | Barrel roll above 4 m; dodge enemy projectiles during the roll |
 | Hold Shift | Skyfire boost (25 power to start) |
 | Esc / P | Pause / resume |
-| M | Toggle Slumbr ambience and action effects |
+| M | Mute / enable Slumbr ambience and recorded effects |
 | Enter | Start / retry |
 
 Skimming below 3.5 m gives speed and power. Roll, thread golden rings, narrowly avoid obstacles, and defeat spirits to build a scoring chain and refill skyfire. Gold wisps extend an existing chain and curve toward the next clear lane. Boost maintains speed at any altitude, but drains power. A run ends after three hits. Ward crystals heal and briefly shield you. Each roll needs a fresh key press; a collision cancels its reward. Near misses score after clearing an obstacle.
@@ -39,7 +39,9 @@ The world quantizes combined sunlight, ambient fill and cast shadows into three 
 
 Magical objects emit HDR color, with a selective glow blurred at quarter resolution before the black outlines are applied. Browsers without floating-point color targets use an 8-bit saturation-gated fallback. Four fixed, non-shadow-casting point lights illuminate nearby toon surfaces from casting, projectiles and impacts. Narrow stepped rim lighting accents silhouettes. Curling impact sparks, luminous spell and carpet trails, a rotating casting rune, golden dust and night fireflies use two bounded particle clouds (384 sparks and 100 ambient motes).
 
-There is **no background music**. The background is an emergent mix of nine sound excerpts from the user-supplied Slumbr app. Air, land and dream layers overlap in 9–13 second phrases, varying sample offsets, playback rate, stereo placement and filtering. Zone, height, speed, night, rain and sand weather steer the mix. Sources load only after sound is enabled, with a bounded decoded-buffer cache and voice count. Pausing or leaving the window fades the ambience down. Short synthesized action effects remain separate from the ambient layer. Press M or the wave button to enable sound.
+There is **no background music**. Take Flight unlocks audio automatically through the user's click or Enter press; deliberate muting and volume preferences are remembered. The background is an emergent mix of nine Slumbr excerpts, normalized to -18 LUFS with a stronger mixer and a quick first fade-in. Air, land and dream layers overlap in 9–13 second phrases, varying offsets, playback rate, stereo placement and filtering. Zone, height, speed, wind, night, rain and sand steer the mix. Pausing or leaving the window fades audio down.
+
+All synthesized effects have been replaced by eight excerpts from the user-supplied `sounds/` folder. Casting, impacts, kills, death, pickups, tricks and boss warnings use these recordings with cue-specific gains and playback rates. Effects preload when audio starts and are capped at sixteen voices, with retrigger limits and cancellation on mute/pause. Source mappings are in `public/audio/effects/README.md`. **Audio mix** on the title/pause screen offers separate ambience and effects sliders and reports loading, playing, muted or failed status. Press M or the wave button to toggle sound.
 
 Giant acacias, tall palms and dense shrubs fill the greener zones. Swirling leaves, curved wind streaks, slanted rain and sand particles use fixed pools. Weather evolves in 24-second phrases; dry biomes turn rain into sandstorms, and thunderstorms bring darker skies, distant flashes and thunder. Wind strength also steers the Slumbr ambience mix. Score multipliers cap at 8×.
 
@@ -71,7 +73,9 @@ In repository **Settings → Pages → Build and deployment**, set **Source** to
 - `src/game.js`: seeded generation, flight rules, scoring, spell progression and collision rules.
 - `src/world.js`: procedural 3D models, sphere placement and merged scenery.
 - `src/main.js`: rendering, input, combat, effects and screens.
-- `src/audio.js`: audio routing, pause/mute, and synthesized action effects.
+- `src/audio.js`: gesture-based startup, saved mix controls, pause/mute and audio status.
+- `src/sample-effects.js`: recorded effects, preload/cache and bounded playback.
+- `tests/audio.test.js`: startup, audio routing, preferences, mute races and sample playback.
 - `src/ambience.js`: Slumbr sample selection, crossfades and environmental mixing.
 - `src/toon.js`: combined-light cel shader and procedural pigment textures.
 - `src/ink.js`: screen-space black contours with distance fading.
