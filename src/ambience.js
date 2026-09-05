@@ -16,7 +16,7 @@ export function ambientProfile({ zone = 'city', altitude = 3, speed = 30, night 
 }
 
 export class AmbientEngine {
-  constructor(context, output, { baseUrl, fetcher = globalThis.fetch, seed = 571 } = {}) {
+  constructor(context, output, { baseUrl, fetcher = url => globalThis.fetch(url), seed = 571 } = {}) {
     this.ctx = context; this.output = output; this.baseUrl = baseUrl; this.fetcher = fetcher; this.rng = random(seed);
     this.buffers = new Map(); this.pending = new Map(); this.failed = new Map(); this.voices = new Set(); this.layers = new Map(); this.enabled = true; this.clock = 0;
     this.profile = ambientProfile();

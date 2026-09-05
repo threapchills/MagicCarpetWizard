@@ -19,7 +19,7 @@ export const CUES = {
 };
 
 export class SampleEffects {
-  constructor(ctx, output, { baseUrl, fetcher = globalThis.fetch } = {}) {
+  constructor(ctx, output, { baseUrl, fetcher = url => globalThis.fetch(url) } = {}) {
     Object.assign(this, { ctx, output, baseUrl, fetcher });
     this.buffers = new Map(); this.pending = new Map(); this.failed = new Map(); this.lastCue = new Map(); this.voices = new Set(); this.enabled = true; this.epoch = 0;
   }

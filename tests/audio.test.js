@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { stat, readFile } from 'node:fs/promises';
 import { Soundscape } from '../src/audio.js';
 import { SampleEffects, EFFECT_ASSETS } from '../src/sample-effects.js';
+import { AmbientEngine } from '../src/ambience.js';
 
 function setup({ muted = false, fetcher } = {}) {
   const params = () => ({ value: 0, setValueAtTime(v) { this.value = v; }, linearRampToValueAtTime(v) { this.value = v; }, setTargetAtTime(v) { this.value = v; }, cancelScheduledValues() {} });
@@ -20,6 +21,20 @@ function setup({ muted = false, fetcher } = {}) {
   return { ctx, sound, urls, events, sources, preferences, storage };
 }
 const flush = () => new Promise(resolve => setImmediate(resolve));
+
+test('default sample loaders preserve the browser fetch receiver for ambience and effects', async () => {
+  const original = globalThis.fetch, h = setup(); let requests = 0;
+  globalThis.fetch = function () {
+    assert.equal(this, globalThis, 'Window.fetch must be called on Window, not the audio loader'); requests++;
+    return Promise.resolve({ ok: true, arrayBuffer: async () => new ArrayBuffer(16) });
+  };
+  try {
+    const ambience = new AmbientEngine(h.ctx, {}, { baseUrl: 'https://example.invalid/audio/' });
+    const effects = new SampleEffects(h.ctx, {}, { baseUrl: 'https://example.invalid/audio/' });
+    assert.ok(await ambience.load('sky2')); assert.ok(await effects.load('shoot')); assert.equal(requests, 2);
+    assert.equal(ambience.failed.size + effects.failed.size, 0);
+  } finally { globalThis.fetch = original; }
+});
 
 test('Take Flight unlocks audio before network work and starts audible ambience through the complete routing', async () => {
   const h = setup(); assert.equal(h.sound.enabled, false);
