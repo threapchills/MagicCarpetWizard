@@ -37,6 +37,8 @@ The reticle has a white core, black contour, and glow for visibility against lig
 
 The world quantizes combined sunlight, ambient fill and cast shadows into three distinct cel-shaded bands, with cool shadows and warm highlights. A screen-space pass draws black silhouettes and finer internal contours, fading them into distant fog. Procedural plaster pigment, sand ripples and woven carpet textures stay attached to the models; mipmaps filter fine detail during fast flight. Its graphic direction takes inspiration from Sable and Chants of Sennaar. Models and textures are generated in code; no textures or assets from those games are used.
 
+Magical objects emit HDR color, with a selective glow blurred at quarter resolution before the black outlines are applied. Browsers without floating-point color targets use an 8-bit saturation-gated fallback. Four fixed, non-shadow-casting point lights illuminate nearby toon surfaces from casting, projectiles and impacts. Narrow stepped rim lighting accents silhouettes. Curling impact sparks, luminous spell and carpet trails, a rotating casting rune, golden dust and night fireflies use two bounded particle clouds (384 sparks and 100 ambient motes).
+
 There is **no background music**. The background is an emergent mix of nine sound excerpts from the user-supplied Slumbr app. Air, land and dream layers overlap in 9–13 second phrases, varying sample offsets, playback rate, stereo placement and filtering. Zone, height, speed, night, rain and sand weather steer the mix. Sources load only after sound is enabled, with a bounded decoded-buffer cache and voice count. Pausing or leaving the window fades the ambience down. Short synthesized action effects remain separate from the ambient layer. Press M or the wave button to enable sound.
 
 Giant acacias, tall palms and dense shrubs fill the greener zones. Swirling leaves, curved wind streaks, slanted rain and sand particles use fixed pools. Weather evolves in 24-second phrases; dry biomes turn rain into sandstorms, and thunderstorms bring darker skies, distant flashes and thunder. Wind strength also steers the Slumbr ambience mix. Score multipliers cap at 8×.
@@ -77,6 +79,8 @@ In repository **Settings → Pages → Build and deployment**, set **Source** to
 - `src/combat.js`: weapon profiles, timed boosts and boss rules.
 - `src/battle.js`: casts, impacts, monsters, loot and moving boss encounters.
 - `src/weather.js`: biome weather, swirling foliage, rain, sand and wind fields.
+- `src/magic.js`: pooled spell lighting, rune aura and luminous particle clouds.
+- `tests/magic.test.js`: effect lifetimes, spherical light placement, particle limits and glow render ordering.
 - `tests/combat.test.js`: real cast impacts, combinations, boss phases and aimed victories across simulation rates.
 - `tests/weather.test.js`: weather budgets and cliff-skimming rules.
 - `tests/game.test.js`: deterministic generation, flight, balance and long-run checks.

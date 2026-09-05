@@ -7,7 +7,11 @@ const materials = new Map();
 const mergedMaterials = new Map();
 export function mat(color, glow = false, surface = 'plaster') {
   const key = `${color}:${glow}:${surface}`;
-  if (!materials.has(key)) materials.set(key, glow ? new THREE.MeshBasicMaterial({ color }) : toonMaterial(color, { surface }));
+  if (!materials.has(key)) {
+    const material = glow ? new THREE.MeshBasicMaterial({ color }) : toonMaterial(color, { surface });
+    if (glow) material.color.multiplyScalar(3);
+    materials.set(key, material);
+  }
   return materials.get(key);
 }
 const box = new THREE.BoxGeometry(1, 1, 1);

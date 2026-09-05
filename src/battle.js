@@ -46,6 +46,7 @@ export class Battle {
     this.fx.push(f);
   }
   ring(x, y, s, color, radius = 6, life = .35) {
+    this.hooks.magic?.burst(x, y, s, color, radius);
     const visual = mesh(hoop, color, this.scene, [0, 0, 0], [1, 1, 1], [0, 0, 0], true);
     this.addFX({ visual, x, y, s, life, maxLife: life, radius, ring: true });
   }
@@ -123,11 +124,13 @@ export class Battle {
       endpoint = { x: clamp(p.x, -140, 140), y: clamp(p.y + 10000 / (2 * RADIUS), .3, 100), s: run.distance + 100 };
     }
     const source = { x: run.x, y: run.altitude + 1, s: run.distance + 2 };
+    this.hooks.magic?.cast(source, profile.kind);
     this.ring(source.x, source.y, source.s, '#fff4c5', 1.6, .13);
     if (profile.kind === 'storm') {
       if (!target) target = this.targets().filter(e => !(e.boss && e.shield) && segmentHitsSphere(source, endpoint, e, e.radius || 2.4))[0];
       this.arc(source, target || endpoint);
       if (target) {
+        this.hooks.magic?.burst(target.x, target.y, target.s, colors.storm, 5);
         const visited = new Set(); let current = target;
         for (let n = 0; current && n < profile.chains + profile.shots - 1; n++) {
           visited.add(current); this.hit(current, profile, run, Math.pow(.78, n));

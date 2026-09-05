@@ -59,6 +59,11 @@ const celLighting = /* glsl */`
   vec3 lightTint = mix(vec3(1.), clamp(illumination / max(energy, .001), .65, 1.4), .30);
   vec3 shadowTint = mix(vec3(.78, .82, 1.08), vec3(1.), middle);
   vec3 outgoingLight = diffuseColor.rgb * band * lightTint * shadowTint + totalEmissiveRadiance;
+  // A narrow, stepped rim catches the edges of robes, domes and foliage.
+  float rimAngle = 1. - abs(dot(normal, geometryViewDir));
+  float rimAA = max(fwidth(rimAngle), .003);
+  float rim = smoothstep(.76 - rimAA, .76 + rimAA, rimAngle) * step(.13, energy);
+  outgoingLight += diffuseColor.rgb * lightTint * vec3(1.08, 1.02, .88) * rim * .14;
 `;
 
 export function toonMaterial(color, { surface = 'plaster', side = THREE.FrontSide } = {}) {
@@ -72,6 +77,6 @@ export function toonMaterial(color, { surface = 'plaster', side = THREE.FrontSid
       }
     `).replace('vec3 outgoingLight = reflectedLight.directDiffuse + reflectedLight.indirectDiffuse + totalEmissiveRadiance;', celLighting);
   };
-  material.customProgramCacheKey = () => 'pigment-cel-3-band-v1';
+  material.customProgramCacheKey = () => 'pigment-cel-3-band-rim-v2';
   return material;
 }

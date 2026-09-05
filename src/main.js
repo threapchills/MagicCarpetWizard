@@ -9,6 +9,7 @@ import { BloodRibbons } from './effects.js';
 import { Battle } from './battle.js';
 import { WEAPONS } from './combat.js';
 import { WeatherField, weatherAt } from './weather.js';
+import { MagicField } from './magic.js';
 
 const $ = id => document.getElementById(id);
 const canvas = $('world');
@@ -30,6 +31,7 @@ const planet = new THREE.Mesh(new THREE.SphereGeometry(RADIUS, 96, 64), planetMa
 const sky = createSky(scene);
 const carpet = createCarpet(); scene.add(carpet.root, carpet.shadow);
 const blood = new BloodRibbons(scene);
+const magic = new MagicField(scene, Math.min(devicePixelRatio, 1.65));
 const chunks = new Map(), bullets = [], particles = [], enemyShots = [];
 const sound = new Soundscape();
 let state = 'menu', run = createRun(), globalTime = 0, lastTime = performance.now(), uiClock = 0;
@@ -39,7 +41,7 @@ let deathTime = 0;
 let audioEnvironment = {};
 let windowFocused = true;
 const battle = new Battle(scene, chunks, bullets, enemyShots, {
-  sound, blood, particles: particleBurst, notify, hurt, tray: updateSpellTray, arena: setArena,
+  sound, blood, magic, particles: particleBurst, notify, hurt, tray: updateSpellTray, arena: setArena,
   hit() { hitTime = .13; $('crosshair').classList.add('hit'); },
   bossUI(b) {
     $('boss-hud').hidden = !b;
@@ -80,7 +82,7 @@ function updateSpellTray() {
   }
 }
 function clearWorld() {
-  battle.clear(); blood.clear();
+  battle.clear(); blood.clear(); magic.clear();
   for (const c of chunks.values()) { scene.remove(c.visual); disposeChunk(c.visual); for (const item of [...c.pickups, ...c.enemies, ...c.rings]) scene.remove(item.visual); }
   chunks.clear();
   for (const array of [bullets, enemyShots]) { array.forEach(p => scene.remove(p.visual)); array.length = 0; }
@@ -359,6 +361,7 @@ function frame(now) {
   updateEntities(0, distance, false); updateParticles(worldDt, distance); updateCarpet(worldDt, playing); updateTrails(worldDt, distance, playing); updateCamera(frozen ? 0 : dt);
   const weather = updateAtmosphere(worldDt, distance);
   blood.update(worldDt, distance); battle.render(worldDt, distance, globalTime);
+  magic.update(worldDt, globalTime, distance, run, bullets, audioEnvironment, playing);
   sound.update(dt, { ...audioEnvironment, running: playing, paused: frozen || document.hidden || !windowFocused });
   if (toastTime > 0) { toastTime -= worldDt; if (toastTime <= 0) $('toast').classList.remove('show'); }
   if (bannerTime > 0) { bannerTime -= worldDt; if (bannerTime <= 0) $('zone-banner').classList.remove('show'); }
