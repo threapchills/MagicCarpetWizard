@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RADIUS, CHUNK, ZONES, SPELLS, cliffRailAt, random } from './game.js';
 import { toonMaterial } from './toon.js';
-import { elevationAt, passageAt } from './landscape.js';
+import { elevationAt, passageAt, passageSolids } from './landscape.js';
 
 const materials = new Map();
 const mergedMaterials = new Map();
@@ -16,6 +16,9 @@ export function mat(color, glow = false, surface = 'plaster') {
   return materials.get(key);
 }
 const box = new THREE.BoxGeometry(1, 1, 1);
+// Long tunnel faces follow the sphere and elevation terraces rather than
+// stretching a single flat quad below their collision surface.
+const tunnelBox = new THREE.BoxGeometry(1, 1, 1, 4, 1, 16);
 const cylinder = new THREE.CylinderGeometry(1, 1, 1, 10);
 const cone = new THREE.ConeGeometry(1, 1, 8);
 const orb = new THREE.SphereGeometry(1, 12, 8);
@@ -254,17 +257,12 @@ export function createChunkVisual(data, seed, arena = false) {
   }
   const passage = !data.disablePassages && passageAt(data.start);
   if (passage) {
+    for (const o of passageSolids(data.start)) mesh(tunnelBox, o.color, o.hazard ? hazards : g, [o.x, o.bottom + o.height / 2, -(o.s - data.start)], [o.width, o.height, o.depth], [0, o.angle, 0]);
     for (const side of [-1, 1]) {
-      // Keep the distant cliff mass intact; only the inner lip obstructs combat.
-      block(g, '#795c61', side * 90, 39, -32, 58, 80, CHUNK + .2);
-      block(hazards, '#795c61', side * 45, 39, -32, 32, 80, CHUNK + .2);
       for (let i = 0; i < 4; i++) block(hazards, i % 2 ? '#b18b75' : '#a47668', side * 29.3, 6 + i * 8, -32, .65, .8, CHUNK + .2);
       mesh(gem, '#74f2da', hazards, [side * 27.7, 9, -16], [.5, 1.7, .5], [0, 0, .2], true);
       mesh(gem, '#ffd29a', hazards, [side * 27.7, 17, -48], [.5, 1.7, .5], [0, 0, -.2], true);
     }
-    block(g, '#725b62', 0, 70, -32, 59, 24, CHUNK + .2);
-    block(hazards, '#725b62', 0, 45, -32, 59, 26, CHUNK + .2);
-    for (const side of [-1, 1]) block(hazards, '#c18f72', side * 21, 34, -32, 12, 8, CHUNK + .2, side * .28);
   }
   if (data.index % 6 === 3) landmark(g, type, Math.floor(data.index / 6) % 2 ? -1 : 1, rng);
   // Gold roadside lanterns make the flight corridor legible at night.

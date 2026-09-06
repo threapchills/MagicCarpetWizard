@@ -44,13 +44,14 @@ test('application boots, flies, casts, rolls once per press, pauses, resumes and
       .replace("from 'three'", `from '${import.meta.resolve('three')}'`)
       .replace(/from '(\.\/[^']+)'/g, (_, path) => `from '${new URL('../src/' + path.slice(2), import.meta.url).href}'`)
       .replace('new THREE.WebGLRenderer(', 'new globalThis.__TestRenderer(');
-    source += '\nexport const snapshot = () => ({ state, time: run.time, distance: run.distance, altitude: run.altitude, tricks: run.tricks, shots: bullets.length, chunks: chunks.size, particles: particles.length, hp: run.hp, weapon: run.weapon, boss: !!battle.boss, bossAge: battle.boss?.age, arenaClear: [...chunks.values()].every(c => c.combatClear), buff: run.buffs.rapid });';
+    source += '\nexport const snapshot = () => ({ state, time: run.time, distance: run.distance, x: run.x, altitude: run.altitude, tricks: run.tricks, shots: bullets.length, chunks: chunks.size, particles: particles.length, hp: run.hp, weapon: run.weapon, boss: !!battle.boss, bossAge: battle.boss?.age, arenaClear: [...chunks.values()].every(c => c.combatClear), buff: run.buffs.rapid });';
     source += '\nexport const enterBoss = () => { run.distance = battle.nextBoss; run.invulnerable = 999; run.buffs.rapid = 10; ensureChunks(run.distance, run.seed); };';
     source += '\nexport const raceSnapshot = () => ({ state, player: raceAttempt?.player, elapsed: raceAttempt?.elapsed, countdown: raceAttempt?.countdown, ghost: !!raceAttempt?.ghost, seed: raceAttempt?.course.seed, gates: raceView.gates.length, next: raceAttempt?.nextGate, records: raceRecords.get(raceLevel).best.map(b => b?.time), racing: document.body.classList.contains("racing") });';
     source += '\nexport const approachNextGate = () => { const g = raceAttempt.course.gates[raceAttempt.nextGate]; Object.assign(run, { distance: g.s - .1, x: g.x, altitude: g.y, vx: 0, vy: 0 }); };';
     source += '\nexport const arenaSnapshot = () => [...chunks.values()].map(c => ({ id: c.index, visual: c.visual.uuid, scenery: c.visual.userData.scenery.uuid, blend: c.arenaBlend, cleared: c.combatClear }));';
     source += '\nexport const leaveBoss = () => battle.escapeBoss(run, true);';
-    const { snapshot, enterBoss, raceSnapshot, approachNextGate, arenaSnapshot, leaveBoss } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
+    source += '\nexport const enterPassage = () => { Object.assign(run, { distance: 800, x: 26, altitude: 15, vx: 0, vy: 0, invulnerable: 0 }); ensureChunks(run.distance, run.seed); };';
+    const { snapshot, enterBoss, raceSnapshot, approachNextGate, arenaSnapshot, leaveBoss, enterPassage } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
     advance(.1); assert.equal(snapshot().state, 'menu');
     dispatch('keydown', { code: 'Enter', target: { tagName: 'BUTTON' } }); assert.equal(snapshot().state, 'menu');
     elements.get('start').onclick(); dispatch('keydown', { code: 'KeyW' }); advance(2.1); dispatch('keyup', { code: 'KeyW' });
@@ -79,6 +80,11 @@ test('application boots, flies, casts, rolls once per press, pauses, resumes and
     dispatch('keydown', { code: 'Digit2' }); assert.equal(snapshot().weapon, 'storm');
     dispatch('keydown', { code: 'Digit3' }); assert.equal(snapshot().weapon, 'wind');
     dispatch('keydown', { code: 'KeyQ' }); assert.equal(snapshot().weapon, 'fire');
+    enterPassage(); dispatch('keydown', { code: 'KeyD' }); advance(1.3, 30);
+    assert.ok(snapshot().x < 27.5, 'the real game loop physically blocks cave walls during damage immunity');
+    assert.ok(snapshot().distance > 840, 'contact slides forward'); assert.equal(snapshot().hp, 2);
+    dispatch('keyup', { code: 'KeyD' }); dispatch('keydown', { code: 'KeyA' }); advance(.2, 144);
+    assert.ok(snapshot().x < 25, 'steering away releases the wall immediately'); dispatch('keyup', { code: 'KeyA' });
     enterBoss(); const beforeArena = arenaSnapshot(); advance(.2); assert.equal(snapshot().boss, true); assert.equal(snapshot().arenaClear, true); assert.equal(elements.get('boss-hud').hidden, false);
     for (const c of arenaSnapshot()) { const before = beforeArena.find(b => b.id === c.id); if (before) { assert.equal(c.visual, before.visual); assert.equal(c.scenery, before.scenery); } }
     assert.ok(arenaSnapshot().some(c => c.blend > 0 && c.blend < 1));

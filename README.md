@@ -95,7 +95,10 @@ In repository **Settings → Pages → Build and deployment**, set **Source** to
 
 ## Project structure
 
-- `src/game.js`: seeded generation, flight rules, scoring, spell progression and collision rules.
+- `src/game.js`: seeded generation, flight rules, scoring and spell progression.
+- `src/collision.js`: swept carpet collisions, solid wall sliding and race crash detection. Damage immunity protects hearts without letting the rider phase through geometry.
+- `src/landscape.js`: elevation and shared tunnel geometry/collision dimensions, including ceilings and angled ribs.
+- `tests/collision.test.js`: cave seams, entrances, ceilings, boosted impacts, rotated obstacles, arena clearing and race collisions.
 - `src/world.js`: procedural 3D models, sphere placement and merged scenery.
 - `src/main.js`: rendering, input, combat, effects and screens.
 - `src/race.js`: procedural courses, checkpoint rules, race timing and saved ghost records.

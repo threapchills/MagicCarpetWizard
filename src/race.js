@@ -1,5 +1,6 @@
-import { CHUNK, ZONES, clamp, lerp, random, createRun, updateRun, obstacleExtents, intersectsObstacle } from './game.js';
+import { CHUNK, ZONES, clamp, lerp, random, createRun, updateRun, obstacleExtents } from './game.js';
 import { breakables } from './landscape.js';
+import { chunkSolids, movementHitsSolid } from './collision.js';
 
 export const RACE_LEVELS = {
   easy: { name: 'Easy', length: 896, spacing: 224, radius: 40, gateBase: 14, density: .22, height: 12, spread: 20, zone: 1, description: 'Open gardens · giant forgiving gates · a few obstacles' },
@@ -69,8 +70,8 @@ export function stepRace(a, input, dt) {
   updateRun(r, { ...input, arena: true, difficulty: Math.min(3, Math.max(0, r.distance) / 6400) }, dt);
   const index = Math.floor(r.distance / CHUNK);
   for (let i = Math.max(0, index - 1); i <= index + 1; i++) {
-    if (a.collisionChunks[i]?.obstacles.some(o => intersectsObstacle(r, o))) { resetAtGate(a); return 'crash'; }
-    if (a.collisionChunks[i]?.props.some(p => p.active && Math.abs(p.s - r.distance) < p.radius && Math.hypot(p.x - r.x, p.y - r.altitude) < p.radius + .6)) { resetAtGate(a); return 'crash'; }
+    const chunk = a.collisionChunks[i];
+    if (chunk && movementHitsSolid({ x: previous.x, altitude: previous.y, distance: previous.s }, r, chunkSolids(chunk))) { resetAtGate(a); return 'crash'; }
   }
   const gate = a.course.gates[a.nextGate];
   if (gate && r.distance >= gate.s) {

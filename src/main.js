@@ -1,9 +1,10 @@
 import './style.css';
 import './flight.css';
 import * as THREE from 'three';
-import { CHUNK, RADIUS, ZONES, ZONE_LENGTH, SPELLS, clamp, lerp, cliffRailAt, createRun, updateRun, generateChunk, zoneAt, multiplier, award, damage, intersectsObstacle, nearObstacle } from './game.js';
+import { CHUNK, RADIUS, ZONES, ZONE_LENGTH, SPELLS, clamp, lerp, cliffRailAt, createRun, updateRun, generateChunk, zoneAt, multiplier, award, damage, nearObstacle } from './game.js';
 import { mat, mesh, gem, orb, createChunkVisual, placeOnTerrain as placeOnWorld, createCarpet, createPickup, createEnemy, createBreakable, createRing, createSky, disposeChunk } from './world.js';
-import { elevationAt, passageAt, hitsPassage } from './landscape.js';
+import { elevationAt, passageAt } from './landscape.js';
+import { chunkSolids, resolveSolidMovement } from './collision.js';
 import { Soundscape } from './audio.js';
 import { InkRenderer } from './ink.js';
 import { BloodRibbons } from './effects.js';
@@ -307,7 +308,6 @@ function updateEntities(dt, distance, playing, previousDistance = distance) {
     hazards.traverse(m => { if (m.isMesh) { m.material.opacity = 1 - c.arenaBlend; m.material.depthWrite = c.arenaBlend === 0; m.castShadow = c.arenaBlend === 0; } });
     for (const p of c.props || []) {
       p.visual.visible = p.active && c.arenaBlend < 1; p.visual.scale.setScalar(1 - c.arenaBlend); placeOnWorld(p.visual, p.x, p.s, p.y, distance);
-      if (playing && p.active && !c.combatClear && Math.abs(p.s - distance) < p.radius && Math.hypot(p.x - run.x, p.y - run.altitude) < p.radius + .6) hurt();
     }
     for (const p of c.pickups) {
       if (!p.active) continue;
@@ -333,12 +333,10 @@ function updateEntities(dt, distance, playing, previousDistance = distance) {
     }
     for (const e of c.enemies) battle.updateEnemy(e, dt, distance, run, playing, globalTime);
     if (playing && !raceAttempt && !c.combatClear) for (const o of c.obstacles) {
-      if (intersectsObstacle(run, o)) hurt();
-      else if (!o.near && nearObstacle(run, o)) { o.near = true; run.nearMisses++; award(run, 70, 9); notify('Silk-thin escape · +skyfire', 1.1); sound.collect(); }
+      if (!o.near && nearObstacle(run, o)) { o.near = true; run.nearMisses++; award(run, 70, 9); notify('Silk-thin escape · +skyfire', 1.1); sound.collect(); }
     }
   }
   if (playing && !raceAttempt) battle.update(dt, run, previousDistance);
-  if (playing && !raceAttempt && !battle.boss && !chunks.get(Math.floor(distance / CHUNK))?.combatClear && hitsPassage(run)) hurt();
 }
 function updateParticles(dt, distance) {
   for (let i = particles.length - 1; i >= 0; i--) {
@@ -489,7 +487,10 @@ function frame(now) {
         if (raceAttempt.countdown === 0 && state === 'playing') { if (shootHeld) fire(); battle.update(STEP, run, previousDistance, true); }
       }
       else {
+        const previous = { x: run.x, altitude: run.altitude, distance: run.distance };
         updateRun(run, input, STEP);
+        const solids = [...chunks.values()].flatMap(chunkSolids);
+        if (resolveSolidMovement(run, previous, solids)) hurt();
         if (shootHeld) fire();
         updateEntities(STEP, run.distance, true, previousDistance);
       }

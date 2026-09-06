@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { elevationAt, passageAt, hitsPassage } from '../src/landscape.js';
+import { elevationAt, passageAt, passageSolids } from '../src/landscape.js';
+import { movementHitsSolid } from '../src/collision.js';
 import { createRun, generateChunk } from '../src/game.js';
 import { createChunkVisual, placeOnTerrain, disposeChunk } from '../src/world.js';
 import { createCourse, createAttempt, stepRace } from '../src/race.js';
@@ -17,8 +18,8 @@ test('terraces are continuous and terrain placement lifts actors with the render
 });
 test('long passages preserve a clear central opening and have matching ceiling and wall collisions', () => {
   assert.equal(passageAt(767), null); assert.ok(passageAt(768)); assert.ok(passageAt(1087)); assert.equal(passageAt(1088), null);
-  const run = createRun(); run.distance = 900; run.altitude = 15; assert.equal(hitsPassage(run), false);
-  run.x = 30; assert.equal(hitsPassage(run), true); run.x = 0; run.altitude = 32; assert.equal(hitsPassage(run), true);
+  const solids = passageSolids(896), run = createRun(); run.distance = 900; run.altitude = 15; assert.equal(movementHitsSolid(run, run, solids), false);
+  run.x = 30; assert.equal(movementHitsSolid(run, run, solids), true); run.x = 0; run.altitude = 32; assert.equal(movementHitsSolid(run, run, solids), true);
   for (let index = 12; index <= 16; index++) assert.equal(generateChunk(index, 14).obstacles.length, 0);
 });
 test('leaves and gusts do not inherit rider steering or climb, and drift laterally over time', () => {
