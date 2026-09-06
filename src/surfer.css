@@ -1,0 +1,15 @@
+#time-veil { position: fixed; inset: 0; pointer-events: none; z-index: 1; opacity: 0; transition: opacity .16s; box-shadow: inset 0 0 130px 30px #27c8df70; background: radial-gradient(ellipse, transparent 45%, #3872ac25); }
+.bending-time #time-veil { opacity: 1; }
+.parry-flash #time-veil { opacity: 1; background: #bafff52c; box-shadow: inset 0 0 90px #f8ffe6b0; }
+.focus-meter { position: fixed; bottom: 181px; left: 35px; width: 190px; color: #d6fff4; font-size: 10px; letter-spacing: 1.3px; text-shadow: 0 2px 4px #000; }
+.focus-meter header { display: flex; justify-content: space-between; margin-bottom: 7px; }
+.focus-track { height: 7px; background: #101d2ec7; border: 1px solid #d6fff48a; border-radius: 8px; overflow: hidden; }
+#focus-bar { display: block; height: 100%; background: linear-gradient(90deg,#66afdc,#d6fff4); box-shadow: 0 0 12px #87fff0; }
+#focus-state { display: block; margin-top: 6px; font-size: 8px; }
+.bending-time .focus-meter { color: white; filter: drop-shadow(0 0 6px #50dfff); }
+#threat-radar { position: fixed; inset: 0; z-index: 3; pointer-events: none; }
+.threat-marker { position: absolute; transform: translate(-50%,-50%); color: #fff0c1; font-size: 10px; font-weight: 700; letter-spacing: 1px; text-shadow: 0 1px 3px #000, 0 0 5px #000; padding-top: 64px; white-space: nowrap; }
+.threat-marker::before { content: ''; position: absolute; width: 53px; height: 53px; border: 3px solid #ffdc8e; outline: 2px solid #271a2b; box-shadow: 0 0 15px #ffb857, inset 0 0 12px #ffb85780; border-radius: 50%; left: 50%; top: 0; transform: translateX(-50%) scale(var(--pulse,1)); }
+.threat-marker.firing { color: white; }
+.threat-marker.firing::before { border-color: #fff; box-shadow: 0 0 23px #ff473c, inset 0 0 16px #ff473c; }
+@media(max-width:700px) { .focus-meter { left: 20px; bottom: 191px; width: 150px; } .threat-marker { font-size: 8px; } .threat-marker::before { width: 42px; height: 42px; } }

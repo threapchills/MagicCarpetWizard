@@ -1,4 +1,4 @@
-export const PROP_TYPES = { city: 'crate', palace: 'urn', desert: 'rock', canyon: 'rock', river: 'timber', farm: 'hay', ancient: 'seal' };
+export const PROP_TYPES = { city: 'crate', palace: 'urn', desert: 'rock', canyon: 'rock', river: 'timber', farm: 'hay', ancient: 'seal', fishing: 'timber', mountain: 'rock', jungle: 'timber', beach: 'crate', island: 'urn', temple: 'seal' };
 export function elevationAt(s) {
   // Broad, smooth terraces start after the opening stretch; no steps at chunk seams.
   const t = Math.max(0, s - 320);
@@ -26,5 +26,8 @@ export function passageSolids(start) {
 }
 export function breakables(type, index, start, rng) {
   if (index < 2 || index % 3 !== 1) return [];
-  return Array.from({ length: 2 }, (_, i) => ({ destructible: true, kind: PROP_TYPES[type], x: (rng() - .5) * 76, y: 2.1, s: start + 17 + i * 24, hp: 3.8, maxHp: 3.8, radius: 2.5, active: true }));
+  return Array.from({ length: 2 }, (_, i) => {
+    const large = index > 8 && i === 0, scale = large ? 2.6 : 1;
+    return { destructible: true, kind: PROP_TYPES[type], x: (rng() - .5) * 76, y: large ? 7 + rng() * 14 : 2.1, s: start + 17 + i * 24, hp: large ? 6.5 : 3.8, maxHp: large ? 6.5 : 3.8, radius: 2.5 * scale, scale, large, active: true };
+  });
 }

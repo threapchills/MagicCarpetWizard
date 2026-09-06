@@ -4,6 +4,7 @@ export const AMBIENT_ASSETS = ['sky2', 'sky4', 'sky5', 'fire3', 'fire7', 'earth5
 const beds = {
   city: ['fire3', 'sky4'], palace: ['sea2', 'sky4'], desert: ['fire7', 'earth7'],
   canyon: ['earth7', 'fire7'], river: ['sea2', 'sea4'], farm: ['earth5', 'sea2'], ancient: ['earth7', 'sky4'],
+  fishing: ['sea4', 'sea2'], mountain: ['sky5', 'earth7'], jungle: ['earth5', 'sea2'], beach: ['sea2', 'sea4'], island: ['sea4', 'fire3'], temple: ['earth7', 'sky4'],
 };
 export function ambientProfile({ zone = 'city', altitude = 3, speed = 30, night = 0, rain = false, sand = false, wind = 0, boost = false, running = false } = {}) {
   const ground = clamp(1 - altitude / 38, .18, 1);

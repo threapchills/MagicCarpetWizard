@@ -6,3 +6,7 @@ dist/
 *.log
 .DS_Store
 .tools/
+
+# Raw working material, not shipped assets (see public/audio for the mixed-down versions)
+slumbr/
+sounds/

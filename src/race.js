@@ -38,7 +38,7 @@ export function generateRaceChunk(index, course) {
     obstacles.push(o);
   }
   const props = start < course.length ? breakables(ZONES[course.zone].type, index, start, random(course.seed + index * 967 + 91)) : [];
-  return { index, start, zone: course.zone, safeLane: 0, disableRails: true, disablePassages: true, obstacles, pickups: [], enemies: [], rings: [], props: props.filter(p => Math.abs(p.x - routeAt(course, p.s).x) > 7 && !course.gates.some(g => Math.abs(g.s - p.s) < 25) && !obstacles.some(o => Math.abs(p.x - o.x) < 13 && Math.abs(p.s - o.s) < 15)) };
+  return { index, start, zone: course.zone, safeLane: 0, disableRails: true, disablePassages: true, obstacles, pickups: [], enemies: [], rings: [], props: props.filter(p => Math.abs(p.x - routeAt(course, p.s).x) > p.radius + 8 && !course.gates.some(g => Math.abs(g.s - p.s) < 25) && !obstacles.some(o => Math.abs(p.x - o.x) < 13 && Math.abs(p.s - o.s) < 15)) };
 }
 export function createAttempt(course, player, ghost = null) {
   const run = createRun(course.seed); run.power = 45; run.invulnerable = 0;
@@ -63,7 +63,8 @@ function resetAtGate(a) {
 export function stepRace(a, input, dt) {
   if (a.finished || a.dnf) return null;
   if (a.countdown > 0) { a.countdown = Math.max(0, a.countdown - dt); if (a.countdown < 1e-8) a.countdown = 0; return null; }
-  a.elapsed += dt;
+  const clockDt = dt * (input.clockRate || 1);
+  a.elapsed += clockDt;
   if (a.elapsed >= RACE_LIMIT) { a.dnf = true; return 'timeout'; }
   if (a.stun > 0) { a.stun = Math.max(0, a.stun - dt); a.run.time += dt; record(a); return null; }
   const r = a.run, previous = { s: r.distance, x: r.x, y: r.altitude };
@@ -78,10 +79,10 @@ export function stepRace(a, input, dt) {
     const fraction = clamp((gate.s - previous.s) / (r.distance - previous.s), 0, 1);
     const x = lerp(previous.x, r.x, fraction), y = lerp(previous.y, r.altitude, fraction);
     if (Math.hypot(x - gate.x, y - gate.y) > gate.radius - .75) { resetAtGate(a); return 'miss'; }
-    a.splits.push(a.elapsed - dt * (1 - fraction));
+    a.splits.push(a.elapsed - clockDt * (1 - fraction));
     a.nextGate++; r.power = Math.min(100, r.power + 12);
     if (a.nextGate === a.course.gates.length) {
-      a.elapsed -= dt * (1 - fraction); Object.assign(r, { distance: gate.s, x, altitude: y });
+      a.elapsed -= clockDt * (1 - fraction); Object.assign(r, { distance: gate.s, x, altitude: y });
       a.finished = true; record(a, true); return 'finish';
     }
     record(a, true); return 'gate';

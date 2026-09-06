@@ -6,11 +6,19 @@ import { createHalo, glowCore } from './glow.js';
 import { elevationAt } from './landscape.js';
 import { balanceAt, FIRST_BOSS_DISTANCE } from './pacing.js';
 import { pullCollectible } from './collectibles.js';
+import { gainFocus } from './focus.js';
 import { mesh, mat, gem, orb, createEnemy, createPickup, placeOnTerrain as placeOnWorld } from './world.js';
 
 const hoop = new THREE.TorusGeometry(1, .055, 5, 36);
 const arrowShaft = new THREE.CylinderGeometry(.07, .07, 2.8, 5);
 const colors = { fire: '#ff6b25', storm: '#aeeaff', wind: '#b8ffe6' };
+const directionProbe = new THREE.Object3D(), arrowForward = new THREE.Vector3(0, 0, -1), heading = new THREE.Vector3();
+export function orientShot(p, distance) {
+  placeOnWorld(p.visual, p.x, p.s, p.y, distance);
+  placeOnWorld(directionProbe, p.x + p.vx * .01, p.s + (p.vs ?? -p.speed) * .01, p.y + p.vy * .01, distance);
+  heading.subVectors(directionProbe.position, p.visual.position).normalize();
+  if (heading.lengthSq()) p.visual.quaternion.setFromUnitVectors(arrowForward, heading);
+}
 
 export class Battle {
   constructor(scene, chunks, bullets, shots, hooks) {
@@ -87,7 +95,7 @@ export class Battle {
     this.drops.push({ kind, x, y, s, visual });
   }
   collect(run, kind) {
-    const maxed = run.spells[kind] >= 3;
+    const maxed = kind !== 'magnet' && run.spells[kind] >= 3;
     collectSpell(run, kind); this.hooks.tray(); this.hooks.sound.trick();
     this.hooks.notify(maxed ? 'MAX LEVEL · OVERDRIVE! Extra shots for 8s' : SPELLS[kind].description, 2.6, 2);
   }
@@ -110,7 +118,7 @@ export class Battle {
     }
     run.kills++; award(run, 180, 12);
     const loot = ['fire', 'rapid', 'storm', 'fury', 'wind', 'focus', 'frost', 'echo', 'ward', 'magnet'];
-    this.drop(run.hp === 1 && run.kills % 3 === 0 ? 'ward' : loot[(run.kills - 1) % loot.length], e.x, e.y, e.s);
+    this.drop(run.hp < 3 && run.kills % 3 === 0 ? 'heart' : loot[(run.kills - 1) % loot.length], e.x, e.y, e.s);
     this.hooks.notify(`${(FOES[e.kind]?.name || e.kind).toUpperCase()} SLAIN · +${180 * multiplier(run)}`, 1, 0);
   }
   hit(e, profile, run, scale = 1) {
@@ -143,6 +151,7 @@ export class Battle {
     this.hooks.magic?.cast(source, profile.kind);
     this.ring(source.x, source.y, source.s, '#fff4c5', 1.6, .13);
     if (profile.kind === 'storm') {
+      for (const shot of this.shots) if (!shot.friendly && segmentHitsSphere(source, endpoint, shot, 2.5)) { this.reflect(shot, run, Math.hypot(shot.x-run.x, shot.y-run.altitude, shot.s-run.distance) < 24 && run.time - (run.parryPress ?? -Infinity) < .2); this.arc(source, shot); }
       if (!target) target = this.targets().filter(e => !(e.boss && e.shield) && segmentHitsSphere(source, endpoint, e, e.radius || 2.4))[0];
       this.arc(source, target || endpoint);
       if (target) {
@@ -190,7 +199,7 @@ export class Battle {
       } else mesh(gem, enemy.kind === 'wizard' ? '#ba8bff' : enemy.kind === 'scarab' ? '#a1ffb4' : '#ff6631', visual, [0, 0, 0], [.6, .6, 1.3], [0, 0, 0], true);
       const tint = enemy.kind === 'wizard' ? '#c586ff' : enemy.kind === 'scarab' ? '#87ff9f' : '#ff7f32';
       visual.children[visual.children.length - 1].material = glowCore(tint); visual.add(createHalo(tint, arrow ? 5 : 7));
-      this.shots.push({ visual, x: enemy.x, y: enemy.y, s: enemy.s, vx: (target.x - enemy.x) / arrival, vy: (target.y - enemy.y + .5 * gravity * arrival * arrival) / arrival, speed, vs, gravity, arrow, life: 5 });
+      this.shots.push({ visual, source: enemy, x: enemy.x, y: enemy.y, s: enemy.s, vx: (target.x - enemy.x) / arrival, vy: (target.y - enemy.y + .5 * gravity * arrival * arrival) / arrival, speed, vs, gravity, arrow, life: 5 });
     }
     this.ring(enemy.x, enemy.y, enemy.s, '#ff7359', enemy.boss ? 12 : 4);
   }
@@ -201,6 +210,31 @@ export class Battle {
       if (e.hp <= 0) this.kill(e, run);
     }
   }
+  reflect(shot, run, perfect = false) {
+    if (shot.friendly) return;
+    const target = shot.source?.active ? shot.source : this.targets().find(e => !e.destructible);
+    const dx = target ? target.x - shot.x : -shot.vx, dy = target ? target.y - shot.y : -shot.vy, ds = target ? target.s - shot.s : -(shot.vs ?? -shot.speed);
+    const scale = (perfect ? 230 : 190) / Math.max(.01, Math.hypot(dx, dy, ds));
+    Object.assign(shot, { friendly: true, vx: dx * scale, vy: dy * scale, vs: ds * scale, gravity: 0, life: 2.2, reflectedDamage: perfect ? 7 : 4 });
+    shot.visual.traverse(o => { if (o.isMesh && o.material.isMeshBasicMaterial) o.material = glowCore('#bcffef'); });
+    this.ring(shot.x, shot.y, shot.s, '#c9fff0', perfect ? 8 : 4, .22);
+    award(run, perfect ? 60 : 12, perfect ? 5 : 1, perfect);
+    if (perfect) { gainFocus(run, 10); this.hooks.parried?.(); this.hooks.notify('PERFECT PARRY · RETURN TO SENDER · +HOURGLASS', 1.5, 4); this.hooks.sound.impact('storm'); }
+  }
+  parry(run, aim, camera) {
+    if ((run.parryCooldown || 0) > run.time) return false;
+    for (const shot of this.shots) {
+      if (shot.friendly) continue;
+      const relative = { x: shot.x - run.x, y: shot.y - run.altitude, s: shot.s - run.distance };
+      const velocity = { x: shot.vx - run.vx, y: shot.vy - run.vy, s: (shot.vs ?? -shot.speed) - run.speed };
+      const length = Math.hypot(relative.x, relative.y, relative.s), approach = -(relative.x * velocity.x + relative.y * velocity.y + relative.s * velocity.s) / Math.max(.01, length);
+      this.temp.copy(shot.visual.position).project(camera);
+      if (length < 25 && approach > 0 && length / approach < .35 && this.temp.z > -1 && this.temp.z < 1 && Math.hypot(this.temp.x - aim.x, this.temp.y - aim.y) < .32) {
+        this.reflect(shot, run, true); run.parryCooldown = run.time + .16; return true;
+      }
+    }
+    return false;
+  }
   updateEnemy(e, dt, distance, run, playing, time) {
     if (!e.active) return;
     e.visual.visible = !this.boss && e.s - distance < 230 && e.s - distance > -75;
@@ -208,6 +242,7 @@ export class Battle {
     if (playing && e.s - distance < 230 && e.s - distance > -75) {
       this.status(e, dt, run); if (!e.active) return;
       const rule = FOES[e.kind] || FOES.stalker, leaping = e.leap != null, balance = balanceAt(distance);
+      if (rule.arrow && !e.spotted && e.s - distance < 145 && e.s > distance) { e.spotted = true; this.hooks.spotted?.(e); }
       moveEnemy(e, run, dt);
       if (e.kind === 'fish' && !leaping && e.leap != null) this.ring(e.baseX, .25, e.baseS, '#b7ffff', 5, .6);
       if (!e.active) { this.ring(e.x, .25, e.s, '#b7ffff', 4, .5); return; }
@@ -224,7 +259,7 @@ export class Battle {
     }
     placeOnWorld(e.visual, e.x, e.s, e.y, distance); e.visual.rotation.z = Math.sin(time * 1.7 + e.phase) * .10;
     if (e.kind === 'fish') { e.visual.visible = e.y > -.3; e.visual.rotation.x += e.leap == null ? 0 : (e.leap / 1.65 - .5) * 2; }
-    if (e.kind === 'guard' || e.kind === 'bandit') e.visual.rotation.z = 0;
+    if (e.kind === 'guard' || e.kind === 'bandit' || e.kind === 'giant') { e.visual.rotation.z = 0; if (Number.isFinite(run.x)) e.visual.rotation.y = Math.atan2(run.x - e.x, e.s - distance); }
     for (const wing of e.visual.userData.limbs || []) wing.object.rotation.z = wing.side * Math.sin(time * 7 + e.phase) * .45;
     const feedback = e.visual.userData;
     feedback.health.scale.x = 1.8 * clamp(e.hp / e.maxHp, 0, 1); feedback.health.position.x = -.9 * (1 - e.hp / e.maxHp);
@@ -317,19 +352,28 @@ export class Battle {
           if (b.pierce-- <= 0) { b.life = 0; break; }
         }
       }
-      if (p.kind === 'wind') {
+      if (p.kind === 'wind' || p.kind === 'fire') {
         for (let j = this.shots.length - 1; j >= 0; j--) {
           const shot = this.shots[j];
-          if (segmentHitsSphere(from, b, shot, p.radius + 1)) { this.scene.remove(shot.visual); this.shots.splice(j, 1); award(run, 10, 1, false); this.ring(shot.x, shot.y, shot.s, '#ffffff', 3, .2); }
+          if (shot.friendly) continue;
+          // Relative motion catches two fast projectiles crossing between ticks.
+          const relativeEnd = { x: b.x - shot.vx * dt, y: b.y - shot.vy * dt, s: b.s - (shot.vs ?? -shot.speed) * dt };
+          if (segmentHitsSphere(from, relativeEnd, shot, p.kind === 'wind' ? p.radius + 1 : 1.5)) {
+            const close = Math.hypot(shot.x-run.x, shot.y-run.altitude, shot.s-run.distance) < 24 && run.time - (run.parryPress ?? -Infinity) < .2;
+            this.reflect(shot, run, close); if (p.kind === 'fire') { b.life = 0; break; }
+          }
         }
         if (collision) this.hooks.sound.impact('wind');
       }
       if (b.life <= 0) { this.scene.remove(b.visual); this.bullets.splice(i, 1); }
     }
     for (let i = this.shots.length - 1; i >= 0; i--) {
-      const p = this.shots[i], from = { x: p.x, y: p.y, s: p.s - previousDistance };
+      const p = this.shots[i]; if (!p) continue; // A reflected killing blow can clear the boss volley.
+      const from = { x: p.x, y: p.y, s: p.s - previousDistance };
       p.s += (p.vs ?? -p.speed) * dt; p.x += p.vx * dt; p.y += p.vy * dt - .5 * (p.gravity || 0) * dt * dt; p.vy -= (p.gravity || 0) * dt; p.life -= dt;
-      if (segmentHitsSphere(from, { x: p.x, y: p.y, s: p.s - run.distance }, { x: run.x, y: run.altitude, s: 0 }, 1.5)) {
+      if (p.friendly) {
+        for (const e of this.targets()) if (segmentHitsSphere({ x: from.x, y: from.y, s: from.s + previousDistance }, p, e, (e.radius || 2.4) + .8)) { this.hit(e, { kind: 'storm', damage: p.reflectedDamage }, run); p.life = 0; break; }
+      } else if (segmentHitsSphere(from, { x: p.x, y: p.y, s: p.s - run.distance }, { x: run.x, y: run.altitude, s: 0 }, 1.5)) {
         if (run.roll) { award(run, 35, 4); this.hooks.notify('SPELL SLIP · +SKYFIRE', 1); } else this.hooks.hurt(); p.life = 0;
       }
       if (p.life <= 0 || p.s < run.distance - 110 || p.s > run.distance + 250 || p.y < -3) { this.scene.remove(p.visual); this.shots.splice(i, 1); }
@@ -354,8 +398,8 @@ export class Battle {
       if (f.ring) f.visual.scale.setScalar(f.radius * (1 - f.life / f.maxLife) + .2);
     }
     for (const b of this.bullets) { placeOnWorld(b.visual, b.x, b.s, b.y, distance); b.visual.rotation.z = time * 9; }
-    for (const p of this.shots) { placeOnWorld(p.visual, p.x, p.s, p.y, distance); p.visual.rotation.y = Math.atan2(-p.vx, p.vs ?? -p.speed); p.visual.rotation.x += Math.atan2(p.vy, Math.abs(p.vs ?? p.speed)); if (!p.arrow) p.visual.rotation.z = time * 6; }
-    for (const p of this.drops) { placeOnWorld(p.visual, p.x, p.s, p.y, distance); p.visual.rotation.y = time * 2; }
+    for (const p of this.shots) { orientShot(p, distance); }
+    for (const p of this.drops) { placeOnWorld(p.visual, p.x, p.s, p.y, distance); p.visual.rotation.y = Math.sin(time * 2) * .2; }
     if (this.boss) {
       const b = this.boss; placeOnWorld(b.visual, b.x, b.s, b.y, distance); b.visual.rotation.z = Math.sin(time) * .07;
       for (const wing of b.visual.userData.limbs || []) wing.object.rotation.z = wing.side * Math.sin(time * 6) * .4;

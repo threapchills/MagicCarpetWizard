@@ -1,8 +1,8 @@
 import './style.css';
 import './flight.css';
 import * as THREE from 'three';
-import { CHUNK, RADIUS, ZONES, ZONE_LENGTH, SPELLS, clamp, lerp, cliffRailAt, createRun, updateRun, generateChunk, zoneAt, multiplier, award, damage, nearObstacle } from './game.js';
-import { mat, mesh, gem, orb, createChunkVisual, placeOnTerrain as placeOnWorld, createCarpet, createPickup, createEnemy, createBreakable, createRing, createSky, disposeChunk } from './world.js';
+import { CHUNK, RADIUS, ZONES, ZONE_LENGTH, SPELLS, clamp, lerp, cliffRailAt, createRun, updateRun, generateChunk, zoneAt, paletteAt, multiplier, award, damage, nearObstacle } from './game.js';
+import { mat, mesh, gem, orb, createChunkVisual, animateRider, placeOnTerrain as placeOnWorld, createCarpet, createPickup, createEnemy, createBreakable, createRing, createSky, disposeChunk } from './world.js';
 import { elevationAt, passageAt } from './landscape.js';
 import { chunkSolids, resolveSolidMovement } from './collision.js';
 import { Soundscape } from './audio.js';
@@ -17,6 +17,9 @@ import { RaceView } from './race-view.js';
 import { ADVENTURE_TIME_SCALE, balanceAt } from './pacing.js';
 import { magnetRadius, pullCollectible } from './collectibles.js';
 import './race.css';
+import { toggleFocus, tickFocus, spotAmbush } from './focus.js';
+import { ThreatRadar } from './radar.js';
+import './surfer.css';
 
 const $ = id => document.getElementById(id);
 const canvas = $('world');
@@ -52,7 +55,9 @@ let arenaVeilTime = 0;
 let audioEnvironment = {};
 let windowFocused = true;
 const battle = new Battle(scene, chunks, bullets, enemyShots, {
-  sound, blood, magic, particles: particleBurst, notify, hurt, tray: updateSpellTray, arena: setArena,
+  sound, blood, magic, particles: particleBurst, notify, hurt,
+  spotted(e) { if (!raceAttempt && spotAmbush(run)) notify((e.kind === 'guard' ? 'TOWER ARCHER' : 'BANDIT AMBUSH') + ' · RIGHT CLICK TO BEND TIME', 2, 3); },
+  parried() { run.parryFlash = .2; }, tray: updateSpellTray, arena: setArena,
   hit() { hitTime = .13; $('crosshair').classList.add('hit'); },
   bossUI(b) {
     $('boss-hud').hidden = !b;
@@ -83,6 +88,7 @@ for (const side of [-1, 1]) {
   visual.frustumCulled = false; scene.add(visual); trails.push({ side, visual, positions, colors });
 }
 const weatherField = new WeatherField(scene);
+const radar = new ThreatRadar($('threat-radar'));
 
 function notify(text, duration = 2.2, priority = 0) { if (toastTime > 0 && priority < notifyPriority) return; notifyPriority = priority; $('toast').textContent = text; $('toast').classList.add('show'); toastTime = duration; }
 function banner(zone) { const z = ZONES[zone]; $('zone-banner').querySelector('strong').textContent = z.name; $('zone-banner').querySelector('em').textContent = z.subtitle; $('zone-banner').classList.add('show'); bannerTime = 4; }
@@ -113,7 +119,7 @@ function ensureChunks(distance, seed) {
   for (let id = Math.max(0, index - 2); id <= index + 8; id++) {
     if (chunks.has(id)) continue;
     const c = raceAttempt ? raceAttempt.collisionChunks[id] || generateRaceChunk(id, raceAttempt.course) : generateChunk(id, seed); c.combatClear = !!battle.boss; c.arenaBlend = c.combatClear ? 1 : 0; c.visual = createChunkVisual(c, seed, c.combatClear); scene.add(c.visual);
-    for (const p of c.props || []) { p.visual = createBreakable(p.kind); p.visual.visible = p.active; scene.add(p.visual); }
+    for (const p of c.props || []) { p.visual = createBreakable(p.kind, p.large); p.visual.visible = p.active; scene.add(p.visual); }
     for (const p of c.pickups) { p.visual = createPickup(p.kind); scene.add(p.visual); p.active = true; }
     for (const e of c.enemies) { e.visual = createEnemy(e.kind); scene.add(e.visual); e.active = true; e.baseX = e.x; e.baseY = e.y; e.baseS = e.s; e.radius ||= 2.4; e.maxHp = e.hp; e.cooldown = .85 + (e.spawnDelay || 0); e.frozen = 0; }
     for (const r of c.rings) { r.visual = createRing(r.radius); scene.add(r.visual); r.active = true; }
@@ -274,12 +280,13 @@ window.addEventListener('focus', () => { windowFocused = true; sound.setPaused(s
 document.addEventListener('visibilitychange', () => { sound.setPaused(document.hidden || state === 'paused'); if (document.hidden) pauseGame(); });
 window.addEventListener('pointermove', e => { aim.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1); $('crosshair').style.left = `${e.clientX}px`; $('crosshair').style.top = `${e.clientY}px`; });
 canvas.addEventListener('pointerdown', e => {
+  if (e.button === 2 && state === 'playing' && (!raceAttempt || !raceAttempt.countdown)) { e.preventDefault(); if (!toggleFocus(run)) notify('HOURGLASS EMPTY · EARN SKYFIRE TO REFILL', 1.5, 2); }
   if (e.button === 0 && state === 'playing') {
-    e.preventDefault(); shootHeld = true;
+    e.preventDefault(); shootHeld = true; run.parryPress = run.time; battle.parry(run, aim, camera);
     if (canvas.setPointerCapture) canvas.setPointerCapture(e.pointerId);
   }
 });
-window.addEventListener('pointerup', () => shootHeld = false); canvas.addEventListener('contextmenu', e => e.preventDefault());
+window.addEventListener('pointerup', e => { if (e.button !== 2) shootHeld = false; }); canvas.addEventListener('contextmenu', e => e.preventDefault());
 window.addEventListener('pointercancel', () => shootHeld = false);
 canvas.addEventListener('lostpointercapture', () => shootHeld = false);
 document.addEventListener('selectstart', e => { if (state === 'playing') e.preventDefault(); });
@@ -307,13 +314,13 @@ function updateEntities(dt, distance, playing, previousDistance = distance) {
     hazards.visible = c.arenaBlend < 1;
     hazards.traverse(m => { if (m.isMesh) { m.material.opacity = 1 - c.arenaBlend; m.material.depthWrite = c.arenaBlend === 0; m.castShadow = c.arenaBlend === 0; } });
     for (const p of c.props || []) {
-      p.visual.visible = p.active && c.arenaBlend < 1; p.visual.scale.setScalar(1 - c.arenaBlend); placeOnWorld(p.visual, p.x, p.s, p.y, distance);
+      p.visual.visible = p.active && c.arenaBlend < 1; p.visual.scale.setScalar((p.scale || 1) * (1 - c.arenaBlend)); placeOnWorld(p.visual, p.x, p.s, p.y, distance);
     }
     for (const p of c.pickups) {
       if (!p.active) continue;
       if (playing) {
-        if (pullCollectible(p, run, dt)) magic.pullTrail(p, dt);
-        const range = p.kind === 'gold' ? 2.8 : 3.5;
+        if (pullCollectible(p, run, dt, p.kind === 'gold' ? 7 : 11)) magic.pullTrail(p, dt);
+        const range = p.kind === 'gold' ? 3.5 : 5;
         const d = Math.hypot(p.x - run.x, p.y - run.altitude, p.s - distance);
         if (d < range) {
           p.active = false; p.visual.visible = false;
@@ -322,7 +329,7 @@ function updateEntities(dt, distance, playing, previousDistance = distance) {
           particleBurst(p.x, p.y, p.s, p.kind === 'gold' ? '#ffe5a6' : SPELLS[p.kind].color, p.kind === 'gold' ? 4 : 20); continue;
         }
       }
-      placeOnWorld(p.visual, p.x, p.s, p.y + Math.sin(globalTime * 2 + p.s) * .18, distance); p.visual.rotation.y = globalTime * (p.attracted ? 7 : 1.5) + p.s;
+      placeOnWorld(p.visual, p.x, p.s, p.y + Math.sin(globalTime * 2 + p.s) * .18, distance); p.visual.rotation.y = p.kind === 'gold' ? globalTime * 2 + p.s : Math.sin(globalTime * 1.8 + p.s) * .2;
     }
     for (const r of c.rings) {
       if (!r.active) continue;
@@ -355,13 +362,15 @@ function updateAtmosphere(dt, distance) {
   const conditions = weatherAt(state === 'menu' ? 0 : run.time, z.type);
   const { sand, rain: raining, storm, wind } = conditions;
   audioEnvironment = { zone: z.type, altitude: state === 'menu' ? 8 : run.altitude, speed: run.speed, night, rain: raining, sand, boost: run.boost, wind };
-  const skyTop = new THREE.Color(z.sky).lerp(new THREE.Color('#407677'), .32).lerp(new THREE.Color('#202d55'), night);
-  const horizon = new THREE.Color(z.fog).lerp(new THREE.Color('#eba777'), (1 - Math.abs(daylight * 2 - 1)) * .26).lerp(new THREE.Color('#646086'), night);
+  const palette = paletteAt(raceAttempt ? raceAttempt.course.zone * ZONE_LENGTH : distance, run.seed);
+  const tint = color => new THREE.Color(color).offsetHSL(palette.hue, palette.saturation, palette.lightness);
+  const skyTop = tint(z.sky).lerp(new THREE.Color('#407677'), .32).lerp(new THREE.Color('#202d55'), night);
+  const horizon = tint(z.fog).lerp(new THREE.Color('#eba777'), (1 - Math.abs(daylight * 2 - 1)) * .26).lerp(new THREE.Color('#646086'), night);
   if (sand) horizon.lerp(new THREE.Color('#c79562'), .72);
   if (raining) skyTop.lerp(new THREE.Color('#40536a'), storm ? .8 : .5);
   sky.uniforms.top.value.lerp(skyTop, dt * .5); sky.uniforms.bottom.value.lerp(horizon, dt * .5); scene.fog.color.lerp(horizon, dt * .5);
   scene.fog.far = lerp(scene.fog.far, sand ? 200 : storm ? 250 : raining ? 340 : 480, dt * .3);
-  planetMaterial.color.lerp(new THREE.Color(z.ground), dt * .5);
+  planetMaterial.color.lerp(tint(z.ground), dt * .5);
   const enclosed = activePassage(distance);
   caveLight.intensity = lerp(caveLight.intensity, enclosed ? 45 : 0, 1 - Math.exp(-dt * 4));
   placeOnWorld(caveLight, run.x * .35, distance + 15, 15, distance);
@@ -390,7 +399,7 @@ function updateCarpet(dt, playing) {
   carpet.root.visible = !(playing && run.invulnerable > 0 && Math.floor(globalTime * 12) % 3 === 0);
   const pos = carpet.fabric.geometry.attributes.position;
   for (let i = 0; i < pos.count; i++) { const px = pos.getX(i), pz = pos.getZ(i); pos.setY(i, Math.sin(pz * 1.7 + globalTime * 5) * .075 + Math.pow(Math.abs(pz) / 2.65, 5) * (.22 + Math.sin(globalTime * 4) * .08) + Math.pow(Math.abs(px) / 1.85, 4) * .08); }
-  pos.needsUpdate = true; carpet.fabric.geometry.computeVertexNormals(); carpet.scarf.rotation.x = Math.sin(globalTime * 8) * .2;
+  pos.needsUpdate = true; carpet.fabric.geometry.computeVertexNormals(); animateRider(carpet, run, globalTime, dt);
   carpet.shadow.position.set(x, .12 + elevationAt(state === 'menu' ? menuDistance : run.distance) - x * x / (2 * RADIUS), 0); carpet.shadow.scale.setScalar(1 + altitude * .035); carpet.shadow.material.opacity = clamp(.23 - altitude * .004, .06, .23);
   particleClock += playing ? dt : 0;
   if (playing && particleClock >= 1 / 35) {
@@ -449,11 +458,12 @@ function updateUI(weather) {
   const balance = balanceAt(run.distance);
   $('journey-stage').textContent = balance.respite > .6 ? 'CATCH YOUR BREATH' : balance.stage;
   $('next-zone').textContent = `${Math.ceil(ZONE_LENGTH - run.distance % ZONE_LENGTH)} m to ${ZONES[(zone + 1) % ZONES.length].name}`;
-  $('combat-buffs').textContent = [...(run.spells.magnet ? [`MAGNET · ${magnetRadius(run.spells.magnet)}m`] : []), ...Object.entries(run.buffs).filter(([, t]) => t > 0).map(([kind, t]) => SPELLS[kind].name.toUpperCase() + ' ' + Math.ceil(t) + 's')].join('  ·  ');
+  if (run.trayMagnet !== run.spells.magnet) { run.trayMagnet = run.spells.magnet; updateSpellTray(); }
+  $('combat-buffs').textContent = [...(run.spells.magnet ? [`MAGNET ${Math.ceil(run.magnetTime)}s · ${magnetRadius(run.spells.magnet)}m`] : []), ...Object.entries(run.buffs).filter(([, t]) => t > 0).map(([kind, t]) => SPELLS[kind].name.toUpperCase() + ' ' + Math.ceil(t) + 's')].join('  ·  ');
   $('active-spell').textContent = SPELLS[run.weapon].name.toUpperCase() + ' · LV ' + run.spells[run.weapon] + ' · 1 / 2 / 3 OR Q';
   const nextRail = cliffRailAt(run.distance + 140), railPhrase = Math.floor((run.distance + 140) / 2560);
   const passage = activePassage(run.distance + 200);
-  if (passage && !battle.boss && run.passageNotified !== passage.start) { run.passageNotified = passage.start; notify('CLIFF PASSAGE AHEAD · CENTER UP · BELOW 30m', 4, 4); }
+  if (passage && !battle.boss && run.passageNotified !== passage.start) { run.passageNotified = passage.start; notify('CLIFF PASSAGE AHEAD · CENTER UP · BELOW 27m', 4, 4); }
   if (nextRail && !raceAttempt && !battle.boss && run.railNotified !== railPhrase) {
     run.railNotified = railPhrase;
     notify(`CLIFF RAIL AHEAD · ${nextRail.side > 0 ? 'RIGHT' : 'LEFT'} EDGE · SKIM AT 6–46m`, 4, 2);
@@ -468,7 +478,11 @@ let firstFrame = true;
 function frame(now) {
   const dt = Math.min((now - lastTime) / 1000, .09); lastTime = now;
   const frozen = state === 'paused' || !$('help-screen').hidden;
-  const timeScale = raceAttempt || state === 'menu' || state === 'race-setup' ? 1 : ADVENTURE_TIME_SCALE;
+  const tempo = state === 'playing' && !frozen && (!raceAttempt || !raceAttempt.countdown) ? tickFocus(run, dt) : 1;
+  const timeScale = (raceAttempt || state === 'menu' || state === 'race-setup' ? 1 : ADVENTURE_TIME_SCALE) * tempo;
+  document.body.classList.toggle('bending-time', tempo < 1);
+  run.parryFlash = Math.max(0, (run.parryFlash || 0) - (frozen ? 0 : dt));
+  document.body.classList.toggle('parry-flash', run.parryFlash > 0);
   const worldDt = frozen ? 0 : dt * timeScale; globalTime += worldDt;
   arenaVeilTime = Math.max(0, arenaVeilTime - worldDt);
   const veilProgress = 1 - arenaVeilTime / 1.8;
@@ -478,7 +492,7 @@ function frame(now) {
   if (playing) {
     const steer = (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0);
     const lift = (keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0) - (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0);
-    const input = { steer, lift, controlRate: 1 / timeScale, boost: keys.has('ShiftLeft') || keys.has('ShiftRight'), roll: keys.has('Space'), arena: !!battle.boss || !!chunks.get(Math.floor(run.distance / CHUNK))?.combatClear };
+    const input = { steer, lift, controlRate: 1 / timeScale, clockRate: 1 / tempo, boost: keys.has('ShiftLeft') || keys.has('ShiftRight'), roll: keys.has('Space'), arena: !!battle.boss || !!chunks.get(Math.floor(run.distance / CHUNK))?.combatClear };
     accumulator = Math.min(accumulator + dt * timeScale, STEP * 8);
     while (accumulator >= STEP && !run.ended && state === 'playing') {
       const previousDistance = run.distance;
@@ -504,6 +518,11 @@ function frame(now) {
   // Refresh placement after streaming even if this display frame had no simulation step.
   updateEntities(0, distance, false); updateParticles(worldDt, distance); updateCarpet(worldDt, playing); updateTrails(worldDt, distance, playing); updateCamera(frozen ? 0 : dt);
   raceView.update(raceAttempt); updateRaceUI();
+  radar.update(battle.targets(), run, camera, playing && !raceAttempt, globalTime);
+  $('focus-bar').style.width = run.focus + '%';
+  $('focus-meter').setAttribute('aria-valuenow', Math.round(run.focus));
+  $('focus-value').textContent = (run.focus * .08).toFixed(1) + 's';
+  $('focus-state').textContent = run.slow ? 'TIME BENDING · RIGHT CLICK TO RELEASE' : run.ambushTime > 0 ? 'AMBUSH SENSE' : 'RIGHT CLICK · BEND TIME';
   const weather = updateAtmosphere(worldDt, distance);
   blood.update(worldDt, distance); battle.render(worldDt, distance, globalTime);
   magic.update(worldDt, globalTime, distance, run, bullets, audioEnvironment, playing);

@@ -10,14 +10,17 @@ export const FOES = {
   dragon: { name: 'Ember drake', hp: 12, radius: 4, interval: 1.5, warning: .65, speed: 64, mobile: true },
   wizard: { name: 'Rogue carpet mage', hp: 7, radius: 2.6, interval: 1.35, warning: .6, speed: 68, mobile: true },
   fish: { name: 'River fang', hp: 2, radius: 1.8, interval: Infinity, warning: 0, speed: 0 },
+  giant: { name: 'Kandahar giant', hp: 18, radius: 6, interval: 2, warning: 1, speed: 65 },
 };
 export function spawnEnemies(type, index, start, difficulty, rng, obstacles) {
   const balance = balanceAt(start);
-  if (start < 640 || index % 2 || rng() > balance.enemyChance) return [];
+  const giantEncounter = ['mountain', 'temple'].includes(type) && index % 8 === 4;
+  if (start < 640 || index % 2 || !giantEncounter && rng() > balance.enemyChance) return [];
   const pools = { city: ['bandit', 'guard', 'wizard'], palace: ['guard', 'wizard', 'dragon'], desert: ['bandit', 'dragon', 'stalker'], canyon: ['dragon', 'bandit', 'brute'], river: ['fish', 'fish', 'wizard', 'guard'], farm: ['bandit', 'wizard', 'dragon'], ancient: ['hexer', 'dragon', 'wizard', 'brute'] };
+  Object.assign(pools, { fishing: ['fish', 'guard', 'bandit'], mountain: ['giant', 'giant', 'dragon'], jungle: ['brute', 'wizard', 'bandit'], beach: ['fish', 'bandit', 'dragon'], island: ['wizard', 'dragon', 'bandit'], temple: ['giant', 'guard', 'wizard'] });
   const unlocked = (pools[type] || pools.desert).filter(kind => !(kind === 'wizard' && start < 2500) && !(kind === 'dragon' && start < 5000) && !(kind === 'guard' && start < 1200));
-  const pool = unlocked.length ? unlocked : ['bandit'], kind = pool[Math.floor(rng() * pool.length)], rule = FOES[kind];
-  const count = kind === 'bandit' ? 2 + Math.floor(balance.strength * 3) + Math.floor(rng() * 2) : kind === 'fish' ? 2 + Number(balance.strength > .3) : kind === 'guard' ? 1 + Number(balance.strength > .3) : 1 + Number(rule.mobile && balance.strength > .65 && rng() < .45);
+  const pool = unlocked.length ? unlocked : ['bandit'], kind = giantEncounter ? 'giant' : pool[Math.floor(rng() * pool.length)], rule = FOES[kind];
+  const count = kind === 'bandit' ? 2 + Math.floor(balance.strength * 3) + Math.floor(rng() * 2) : kind === 'fish' ? 2 + Number(balance.strength > .3) : kind === 'guard' ? 1 + Number(balance.strength > .3) : 1 + Number(!!rule.mobile && balance.strength > .65 && rng() < .45);
   const enemies = [];
   for (let i = 0; i < count; i++) {
     const side = i % 2 ? 1 : -1, s = start + 10 + i * 7;
@@ -25,6 +28,7 @@ export function spawnEnemies(type, index, start, difficulty, rng, obstacles) {
     if (kind === 'bandit') { x = side * (35 + rng() * 16); y = 1.7; }
     if (kind === 'guard') { x = side * 59; y = 18 + rng() * 10; }
     if (kind === 'fish') { x = Math.sin(s / 180) * 21 + side * 11; y = -.8; }
+    if (kind === 'giant') { x = side * (35 + rng() * 12); y = 8; }
     if (kind === 'bandit' && obstacles.some(o => Math.abs(x - o.x) < 13 && Math.abs(s - o.s) < 16)) x = side * 57;
     enemies.push({ kind, x, y, s, hp: rule.hp + Math.min(2, Math.floor(difficulty)), radius: rule.radius, phase: rng() * Math.PI * 2, spawnDelay: .6 * (1 - balance.strength) + i * .35 });
   }
@@ -46,6 +50,7 @@ export function moveEnemy(e, run, dt) {
     }
     return;
   }
+  if (e.kind === 'giant') { e.x = e.baseX + Math.sin(e.age * .7) * 8; e.y = 8; e.s = e.baseS - Math.sin(e.age * .5) * 15; return; }
   if (e.kind === 'guard' || e.kind === 'bandit') {
     e.x = e.baseX; e.y = e.baseY; e.s = e.baseS; return;
   }

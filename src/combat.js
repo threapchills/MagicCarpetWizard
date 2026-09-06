@@ -18,7 +18,10 @@ export function weaponProfile(run, kind = run.weapon) {
   if (buffs.overdrive > 0) { p.shots = Math.min(4, p.shots + 1); p.damage *= 1.15; }
   return p;
 }
-export function tickBuffs(run, dt) { for (const key of Object.keys(run.buffs)) run.buffs[key] = Math.max(0, run.buffs[key] - dt); }
+export function tickBuffs(run, dt) {
+  for (const key of Object.keys(run.buffs)) run.buffs[key] = Math.max(0, run.buffs[key] - dt);
+  if (run.magnetTime > 0) { run.magnetTime = Math.max(0, run.magnetTime - dt); if (!run.magnetTime) run.spells.magnet = 0; }
+}
 export function damageFor(profile, enemy) {
   return profile.damage * (profile.kind === 'fire' && enemy.frozen > 0 ? 1.8 : 1)
     * (profile.kind === 'wind' && enemy.burn > 0 ? 1.5 : 1);

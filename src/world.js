@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { RADIUS, CHUNK, ZONES, SPELLS, cliffRailAt, random } from './game.js';
+import { RADIUS, CHUNK, ZONES, SPELLS, cliffRailAt, random, paletteAt } from './game.js';
 import { toonMaterial } from './toon.js';
 import { elevationAt, passageAt, passageSolids } from './landscape.js';
 
@@ -32,7 +32,7 @@ export function mesh(geometry, color, parent, position = [0, 0, 0], scale = [1, 
   const m = new THREE.Mesh(geometry, mat(color, glow)); m.position.set(...position); m.scale.set(...scale); m.rotation.set(...rotation); m.castShadow = !glow; m.receiveShadow = !glow; parent.add(m); return m;
 }
 export function block(parent, color, x, y, z, w, h, d, ry = 0) { return mesh(box, color, parent, [x, y, z], [w, h, d], [0, ry, 0]); }
-function mergeGroup(group, start = 0) {
+function mergeGroup(group, start = 0, palette = null) {
   group.updateMatrixWorld(true); const sets = new Map();
   group.traverse(m => { if (m.isMesh) {
     const g = (m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone()).applyMatrix4(m.matrixWorld), positions = g.attributes.position;
@@ -43,7 +43,8 @@ function mergeGroup(group, start = 0) {
     g.computeVertexNormals();
     // Bake each object's linear pigment into vertex colors, then merge by
     // surface instead of color. Dense groves cost a few draws per chunk.
-    const colors = new Float32Array(positions.count * 3), tint = m.material.color;
+    const colors = new Float32Array(positions.count * 3), tint = m.material.color.clone();
+    if (palette && !m.material.isMeshBasicMaterial) tint.offsetHSL(palette.hue, palette.saturation, palette.lightness);
     for (let i = 0; i < positions.count; i++) { colors[i * 3] = tint.r; colors[i * 3 + 1] = tint.g; colors[i * 3 + 2] = tint.b; }
     g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     const key = `${m.material.type}:${m.material.map?.uuid || ''}:${m.material.side}`;
@@ -62,7 +63,7 @@ function windowOn(parent, x, y, z, width, height, color = '#354e60', ry = 0) { r
 export function building(parent, x, z, w, h, d, rng, grand = false) {
   const base = -x * x / (2 * RADIUS);
   const g = new THREE.Group(); parent.add(g); g.position.set(x, base, z);
-  g.rotation.y = (rng() - .5) * Math.PI * 2;
+  g.rotation.y = (rng() - .5) * Math.PI * 2; g.scale.set(1.1, 1.25, 1.1);
   const walls = ['#f1bc86', '#e6a375', '#efd29f', '#d99672', '#f7d9a6'];
   const color = walls[Math.floor(rng() * walls.length)], roof = rng() > .35 ? '#398e91' : '#d6935e';
   block(g, color, 0, h / 2, 0, w, h, d);
@@ -165,6 +166,7 @@ function landmark(parent, type, side, rng) {
 
 export function createChunkVisual(data, seed, arena = false) {
   const rng = random(seed + data.index * 7919), g = new THREE.Group(), hazards = new THREE.Group(), type = ZONES[data.zone].type;
+  const coastal = ['fishing', 'beach', 'island'].includes(type), highland = ['mountain', 'temple'].includes(type);
   // Broad ground segments are curved across the planet's latitude.
   for (let x = -216; x <= 216; x += 12) {
     const tile = block(g, ZONES[data.zone].ground, x, -.65 - x * x / (2 * RADIUS), -CHUNK / 2, 12.2, 1.1, CHUNK + .2); tile.rotation.z = -x / RADIUS;
@@ -177,6 +179,53 @@ export function createChunkVisual(data, seed, arena = false) {
     const center = Math.sin((data.start + z) / 220) * 23;
     const angle = Math.atan(Math.cos((data.start + z) / 220) * 23 / 220);
     block(g, '#52a6ad', center, .02 - center * center / (2 * RADIUS), -z - 4, 40 + Math.sin((data.start + z) / 130) * 8, .08, 9, angle);
+  }
+  if (coastal) {
+    for (const side of [-1, 1]) {
+      block(g, '#52b8be', side * 153, -3, -32, 184, .2, CHUNK + .2);
+      for (let i = 0; i < 4; i++) block(g, '#d8f5dd', side * (68 + Math.sin((data.start+i*16)/110)*4), -1.2, -i*16, 3, .15, 11, .15);
+      const x = side * (93 + rng() * 20);
+      palm(g, side * 73, -14, 24 + rng()*10, rng);
+      if (type === 'fishing') {
+        for(const z of [-12,-43]) {
+          for(const offset of [-5,5]) block(g,'#786454',x+offset,2,z, .55,9,.55);
+          const hut = building(g,x,z,12,10,13,rng); hut.position.y += 5;
+          block(g,'#b88a65',x,3,z+9,16,.55,5);
+          mesh(cone,'#f5d9a2',g,[x-side*18,7,z],[5,14,.12],[0,side*.4,.2]);
+          mesh(orb,'#775c4a',g,[x-side*18,-1,z],[3.2,1.2,8]);
+        }
+      } else if(type === 'island') {
+        mesh(cone,'#645e77',g,[side*158,40,-32],[55,120,55]);
+        mesh(ring,'#f09557',g,[side*158,100,-32],[5,5,5],[Math.PI/2,0,0],true);
+        for(let i=0;i<4;i++) { block(g,['#ba655b','#c79849','#755171'][i%3],x+(i-2)*8,4,-34,7,9,9,.2); mesh(cone,'#eed5a8',g,[x+(i-2)*8,11,-34],[6,6,6]); }
+      } else {
+        for(let i=0;i<4;i++) { const px=side*(77+i*22); palm(g,px,-35+rng()*20,18+rng()*18,rng); mesh(gem,'#efd3b3',g,[px,-1,-50],[6,2.5,5]); }
+      }
+    }
+  }
+  if (highland) for(const side of [-1,1]) {
+    for(let i=0;i<3;i++) {
+      const x=side*(105+i*42), h=95+rng()*90, z=-10-rng()*45;
+      mesh(cone,i%2?'#8e8198':'#a399b0',g,[x,h*.30,z],[35,h,37],[0,rng(),0]);
+      mesh(cone,'#eee6d9',g,[x,h*.65,z],[10,h*.3,11],[0,0,0]);
+    }
+    if(type==='temple') {
+      const x=side*89;
+      for(let tier=0;tier<4;tier++) {
+        block(g,tier%2?'#b77369':'#eed8b4',x,3+tier*8,-30,30-tier*5,8,27-tier*4);
+        block(g,'#744c65',x,8+tier*8,-30,35-tier*5,1,32-tier*4);
+      }
+      mesh(cone,'#e4bd72',g,[x,42,-30],[5,18,5]);
+      for(let i=0;i<9;i++) mesh(box,['#d59864','#76b4ac','#b95b77','#e4c98e'][i%4],g,[side*(64+i*5),23+Math.sin(i/8*Math.PI)*-3,-6],[3,3.5,.10],[0,.2,(rng()-.5)*.3]);
+    }
+  }
+  if(type==='jungle') for(const side of [-1,1]) {
+    for(let i=0;i<7;i++) {
+      const x=side*(83+rng()*95), z=-rng()*64;
+      acacia(g,x,z,40+rng()*24,rng); palm(g,x+side*13,z-8,30+rng()*15,rng);
+      mesh(cylinder,'#496746',g,[x,18,z],[.18,28,.18],[0,0,.12]);
+      mesh(gem,'#e8aa77',g,[x,4,z+3],[2,3,2]);
+    }
   }
   for (const side of [-1, 1]) {
     if (['city', 'palace', 'river', 'farm'].includes(type)) {
@@ -213,7 +262,7 @@ export function createChunkVisual(data, seed, arena = false) {
     } else if (type === 'farm') {
       for (let row = 0; row < 5; row++) { const x = side * (80 + row * 22); block(g, row % 2 ? '#c9b76c' : '#718e5a', x, -.1 - x * x / (2 * RADIUS), -32, 18, .15, 55, (rng() - .5) * .45); for (let k = 0; k < 5; k++) mesh(cone, '#7a985b', g, [x + rng() * 7, .7 - x * x / (2 * RADIUS), -k * 13], [3, 4, 3]); }
       if (data.index % 2 === 0) building(g, side * 85, -rng() * CHUNK, 12, 11, 14, rng);
-    } else {
+    } else if(type === 'ancient') {
       for (let i = 0; i < 4; i++) ruin(g, side * (75 + i * 29 + rng() * 13), -rng() * CHUNK, 13 + rng() * 29);
       for (let i = 0; i < 4; i++) rock(g, side * (90 + rng() * 95), -rng() * CHUNK, 7 + rng() * 10, 14 + rng() * 18, '#ad8b89', rng);
     }
@@ -264,7 +313,7 @@ export function createChunkVisual(data, seed, arena = false) {
       mesh(gem, '#ffd29a', hazards, [side * 27.7, 17, -48], [.5, 1.7, .5], [0, 0, -.2], true);
     }
   }
-  if (data.index % 6 === 3) landmark(g, type, Math.floor(data.index / 6) % 2 ? -1 : 1, rng);
+  if (data.index % 6 === 3 && !coastal && !highland && type !== 'jungle') landmark(g, type, Math.floor(data.index / 6) % 2 ? -1 : 1, rng);
   // Gold roadside lanterns make the flight corridor legible at night.
   for (const side of [-1, 1]) {
     const x = side * (59 + rng() * 3), z = -rng() * CHUNK;
@@ -273,7 +322,8 @@ export function createChunkVisual(data, seed, arena = false) {
   }
   // Build both layers with the same random sequence. Arena mode never rerolls
   // landmarks, foliage, terrain, roadside towers or lanterns.
-  const result = new THREE.Group(), scenery = mergeGroup(g, data.start), hazardVisual = mergeGroup(hazards, data.start);
+  const palette = paletteAt(data.disablePassages ? data.zone * 1280 : data.start, seed);
+  const result = new THREE.Group(), scenery = mergeGroup(g, data.start, palette), hazardVisual = mergeGroup(hazards, data.start, palette);
   hazardVisual.traverse(m => { if (m.isMesh) {
     const source = m.material; m.material = source.clone();
     m.material.onBeforeCompile = source.onBeforeCompile; m.material.customProgramCacheKey = source.customProgramCacheKey;
@@ -301,24 +351,69 @@ export function createCarpet() {
   const pattern = mesh(box, '#e8b979', body, [0, .07, .2], [1.65, .04, 1.65], [0, Math.PI / 4, 0]);
   mesh(box, '#317f8d', body, [0, .1, .2], [1.15, .04, 1.15], [0, Math.PI / 4, 0]);
   for (const z of [-1.5, 1.6]) mesh(gem, '#f2c67e', body, [0, .13, z], [.24, .03, .4]);
-  const rider = new THREE.Group(); rider.position.set(0, .15, .25); body.add(rider);
-  // A little robed traveler, turban, sash, boots and fluttering scarf.
-  mesh(cone, '#286b81', rider, [0, .76, 0], [.66, 1.45, .55]);
-  mesh(orb, '#409ba1', rider, [0, 1.19, -.04], [.52, .54, .39]);
-  mesh(orb, '#c98666', rider, [0, 1.76, -.12], [.36, .4, .34]);
-  mesh(orb, '#f7e2b3', rider, [0, 2.03, -.11], [.46, .3, .41]);
-  mesh(gem, '#dd9a64', rider, [0, 2.11, -.49], [.14, .19, .06]);
-  mesh(orb, '#f4d99d', rider, [.12, 2.43, -.04], [.08, .35, .1], [0, 0, -.24]);
-  block(rider, '#e2b06f', 0, .72, -.1, .99, .18, .76);
+
+  body.scale.setScalar(.83);
+  const rider = new THREE.Group(); rider.position.y = .13; rider.rotation.y = -Math.PI / 2; body.add(rider);
+  // A youthful, side-on stance: bent knees, short coat, wide planted feet.
   for (const side of [-1, 1]) {
-    mesh(orb, '#327f8b', rider, [side * .63, 1.12, -.03], [.38, .18, .21], [0, 0, side * -.4]);
-    mesh(orb, '#d89e77', rider, [side * .9, 1.03, -.09], [.15, .15, .16]);
-    mesh(orb, '#e9bc78', rider, [side * .33, .15, -.48], [.2, .17, .4]);
+    mesh(orb, '#343e66', rider, [side * .62, .58, .03], [.25, .57, .27], [0, 0, side * -.36]);
+    mesh(orb, '#55416c', rider, [side * .45, 1.01, .10], [.30, .38, .30], [0, 0, side * .55]);
+    mesh(orb, '#e4bd79', rider, [side * .79, .16, -.12], [.28, .16, .43]);
   }
-  const scarf = block(rider, '#eeab6e', .13, 1.48, .8, .32, .07, 1.4);
+  mesh(cone, '#386b82', rider, [0, 1.37, .06], [.58, .94, .49]);
+  mesh(orb, '#459e9d', rider, [0, 1.73, .05], [.52, .53, .39]);
+  block(rider, '#f1bc70', 0, 1.17, -.02, .93, .18, .78);
+  mesh(orb, '#bd845c', rider, [0, 2.20, -.10], [.34, .40, .33]);
+  mesh(orb, '#dc9f73', rider, [0, 2.21, -.42], [.13, .13, .17]);
+  for (const side of [-1, 1]) {
+    mesh(orb, '#202637', rider, [side * .15, 2.28, -.395], [.065, .035, .035]);
+    mesh(orb, '#397b8f', rider, [side * .65, 1.68, -.06], [.39, .17, .22], [0, 0, side * -.27]);
+    mesh(orb, '#d49a6d', rider, [side * .96, 1.56, -.12], [.15, .15, .15]);
+  }
+  mesh(orb, '#39334f', rider, [0, 2.48, .02], [.43, .27, .4]);
+  mesh(cone, '#534178', rider, [-.06, 2.93, .08], [.48, .95, .45], [0, 0, -.27]);
+  mesh(cone, '#73528a', rider, [.14, 3.27, .08], [.24, .5, .23], [0, 0, -.95]);
+  mesh(ring, '#dbb568', rider, [0, 2.54, .02], [.44, .44, .44], [Math.PI / 2, 0, 0]);
+  mesh(gem, '#b4ffee', rider, [0, 2.65, -.38], [.12, .20, .1], [0, 0, 0], true);
+  const scarf = block(rider, '#dca665', .13, 1.9, .48, .28, .08, .8);
+  // Jointed, tapered locks and beard are real 3D strands, with bounded meshes.
+  const strands = [];
+  for (let i = 0; i < 12; i++) {
+    const beard = i < 4, t = i / 12 * Math.PI * 2;
+    const anchor = beard ? new THREE.Vector3(.40, 2.02, (i - 1.5) * .11) : new THREE.Vector3(Math.cos(t) * .34, 2.39, Math.sin(t) * .35);
+    const segments = [];
+    for (let j = 0; j < 6; j++) segments.push(mesh(cylinder, beard ? '#8f6a58' : i % 3 ? '#353049' : '#56405c', body));
+    const bead = mesh(gem, i % 2 ? '#d9a75f' : '#77d5cb', body, [0, 0, 0], [.075, .12, .075]);
+    strands.push({ beard, anchor, segments, bead, phase: i * 1.9 });
+  }
   const shadow = new THREE.Mesh(new THREE.CircleGeometry(2.5, 24), new THREE.MeshBasicMaterial({ color: '#4e545a', transparent: true, opacity: .16, depthWrite: false })); shadow.rotation.x = -Math.PI / 2;
-  return { root, body, fabric, trim, scarf, pattern, shadow };
+  const rig = { root, body, fabric, trim, scarf, pattern, shadow, rider, strands, hairFlow: 0 };
+  animateRider(rig, { speed: 30, power: 25, vx: 0 }, 0, 1); return rig;
 }
+const strandUp = new THREE.Vector3(0, 1, 0), strandA = new THREE.Vector3(), strandB = new THREE.Vector3(), strandDirection = new THREE.Vector3();
+export function animateRider(carpet, run, time, dt) {
+  const target = Math.min(1, Math.max(0, (run.speed - 35) / 100) * .65 + run.power / 100 * .35 + (run.boost ? .25 : 0));
+  carpet.hairFlow += (target - carpet.hairFlow) * (1 - Math.exp(-dt * 5));
+  const flow = carpet.hairFlow;
+  carpet.rider.rotation.z = Math.sin(time * 2) * .035 - (run.vx || 0) * .002;
+  carpet.scarf.rotation.x = -.15 - flow * .5 + Math.sin(time * 7) * .1;
+  for (const strand of carpet.strands) {
+    const length = (strand.beard ? .9 : 1.3) + flow * (strand.beard ? 2.3 : 4.1);
+    strandA.copy(strand.anchor);
+    for (let j = 0; j < strand.segments.length; j++) {
+      const t = (j + 1) / strand.segments.length;
+      strandB.set(strand.anchor.x + Math.sin(time * 7 - t * 5 + strand.phase) * t * (.06 + flow * .16),
+        strand.anchor.y - t * length * (1 - flow * .77), strand.anchor.z + t * length * (.18 + flow * .95));
+      const segment = strand.segments[j]; strandDirection.subVectors(strandB, strandA);
+      segment.position.copy(strandA).add(strandB).multiplyScalar(.5);
+      segment.quaternion.setFromUnitVectors(strandUp, strandDirection.clone().normalize());
+      const width = (strand.beard ? .075 : .095) * (1 - t * .65);
+      segment.scale.set(width, strandDirection.length() + .035, width); strandA.copy(strandB);
+    }
+    strand.bead.position.copy(strandB);
+  }
+}
+const pickupShapes = new Map();
 export function createPickup(kind) {
   const g = new THREE.Group();
   if (kind === 'gold') { mesh(gem, '#ffd88e', g, [0, 0, 0], [.34, .6, .34], [0, 0, .3], true); mesh(ring, '#eeb564', g, [0, 0, 0], [.55, .55, .55]); }
@@ -330,15 +425,44 @@ export function createPickup(kind) {
     }
     mesh(ring, '#fff2d0', g, [0, 0, 0], [1.55, 1.55, 1.55], [.25, .3, 0], true);
   }
-  else {
-    const colors = Object.fromEntries(Object.entries(SPELLS).map(([key, value]) => [key, value.color]));
-    mesh(gem, colors[kind], g, [0, 0, 0], [.85, 1.2, .85], [0, .3, 0], true);
-    mesh(ring, '#f8dfb0', g, [0, 0, 0], [1.5, 1.5, 1.5], [.3, .4, 0]);
-    mesh(ring, colors[kind], g, [0, 0, 0], [1.35, 1.35, 1.35], [1.6, .2, 0]);
+  else if (kind === 'heart' || kind === 'ward') {
+    const color = kind === 'heart' ? '#ff527b' : '#8ddfff';
+    const heart = new THREE.Shape(); heart.moveTo(0,-1.2); heart.bezierCurveTo(-2,.2,-1.3,1.7,0,.65); heart.bezierCurveTo(1.3,1.7,2,.2,0,-1.2);
+    const shape = new THREE.ExtrudeGeometry(heart,{depth:.35,bevelEnabled:true,bevelSize:.12,bevelThickness:.12,bevelSegments:1,steps:1,curveSegments:8});
+    // Cache silhouettes below, once per pickup kind.
+    if (!pickupShapes.has(kind)) pickupShapes.set(kind, shape); else shape.dispose();
+    mesh(pickupShapes.get(kind), color, g, [0,.15,0], [1,1,1], [0,0,0], true);
+    if(kind==='ward') mesh(ring,'#ffffff',g,[0,0,0],[1.65,1.65,1.65],[0,0,0],true);
+  } else {
+    const color = SPELLS[kind]?.color || '#fff3c7';
+    if (kind === 'fury') {
+      mesh(orb,color,g,[0,0,0],[.7,.7,.7],[0,0,0],true);
+      for(let i=0;i<8;i++) { const a=i*Math.PI/4; mesh(gem,color,g,[Math.cos(a)*1.1,Math.sin(a)*1.1,0],[.2,.55,.2],[0,0,a-Math.PI/2],true); }
+    } else if (kind === 'fire') {
+      for(let i=0;i<3;i++) mesh(cone,i===1?'#fff2ae':color,g,[(i-1)*.45,i===1?.3:0,0],[.5,i===1?2.5:1.5,.45],[0,0,(i-1)*-.2],true);
+    } else if(kind==='storm') {
+      for(const [x,y,angle] of [[.25,.75,-.5],[0,0,1.0],[-.25,-.75,-.5]]) mesh(box,color,g,[x,y,0],[.36,1.3,.3],[0,0,angle],true);
+    } else if(kind==='wind') {
+      for(let i=0;i<3;i++) mesh(ring,color,g,[0,(i-1)*.65,0],[1.2-i*.25,.4,.65],[.7,0,0],true);
+    } else if(kind==='frost') {
+      for(let i=0;i<3;i++) mesh(box,color,g,[0,0,0],[.24,2.6,.24],[0,0,i*Math.PI/3],true);
+    } else if(kind==='echo') {
+      for(const side of [-1,1]) mesh(ring,color,g,[side*.6,0,0],[.7,1.1,.7],[0,0,side*.4],true);
+    } else if(kind==='rapid' || kind==='overdrive') {
+      for(let i=0;i<3;i++) { mesh(cone,color,g,[(i-1)*.8,.1,0],[.25,1.8,.25],[0,0,0],true); mesh(box,'#fff5db',g,[(i-1)*.8,-.8,0],[.4,.25,.4],[0,0,0],true); }
+      if(kind==='overdrive') mesh(ring,color,g,[0,0,0],[1.7,1.7,1.7],[0,0,0],true);
+    } else {
+      mesh(ring,color,g,[0,0,0],[1.2,1.2,1.2],[0,0,0],true);
+      for(const angle of [0,Math.PI/2]) mesh(box,'#ffffff',g,[0,0,0],[.15,2.8,.15],[0,0,angle],true);
+    }
+  }
+  if(kind !== 'gold') {
+    mesh(ring, '#fff0cf', g, [0,0,-.3], [2.0,2.0,2.0], [0,0,0], true);
+    g.scale.setScalar(1.3);
   }
   return g;
 }
-export function createBreakable(kind) {
+export function createBreakable(kind, large = false) {
   const g = new THREE.Group();
   if (kind === 'urn') { mesh(orb, '#b45772', g, [0, -.4, 0], [1.7, 1.7, 1.7]); mesh(cylinder, '#e6bd82', g, [0, 1.15, 0], [.85, .8, .85]); }
   else if (kind === 'timber') for (let i = 0; i < 3; i++) { mesh(cylinder, '#745440', g, [i - 1, -.7 + (i % 2), 0], [.7, 4.5, .7], [Math.PI / 2, 0, i * .15]); mesh(orb, '#dfb576', g, [i - 1, -.7 + (i % 2), 2.2], [.65, .65, .06]); }
@@ -349,6 +473,13 @@ export function createBreakable(kind) {
     block(g, kind === 'hay' ? '#cda850' : '#8b5b40', 0, -.1, 0, 3.9, 3.8, 3.8);
     for (const side of [-1, 1]) { block(g, '#e2b279', side * 1.4, -.1, 1.98, .2, 3.8, .08); block(g, '#e2b279', 0, side * 1.4, 1.98, 3.9, .2, .08); }
     block(g, '#f6d096', 0, 0, 2, 4.7, .18, .1, Math.PI / 4);
+  }
+  if (large) {
+    for (const side of [-1, 1]) {
+      mesh(ring, '#ffdaa0', g, [0, 0, side * 2.15], [1.25, 1.25, 1.25], [0, 0, 0], true);
+      for (const a of [0, Math.PI / 2]) mesh(box, '#fff6d0', g, [0, 0, side * 2.18], [.1, 1.3, .1], [0, 0, a], true);
+    }
+    mesh(ring, '#f2b978', g, [0, -1.5, 0], [2.3, 2.3, 2.3], [Math.PI / 2, 0, 0], true);
   }
   return g;
 }
@@ -414,7 +545,19 @@ function creatureModel(g, kind) {
 export function createEnemy(kind = 'stalker') {
   const g = new THREE.Group();
   const creature = ['bandit', 'guard', 'wizard', 'dragon', 'fish', 'scarab', 'serpent'].includes(kind);
-  if (creature) creatureModel(g, kind);
+  if (kind === 'giant') {
+    mesh(orb,'#8a877b',g,[0,0,0],[1.2,1.5,.8]);
+    mesh(orb,'#aaa191',g,[0,1.55,.1],[.65,.7,.6]);
+    mesh(gem,'#655d60',g,[0,1.15,.65],[.5,.65,.25]);
+    for(const side of [-1,1]) {
+      mesh(orb,'#ffddb1',g,[side*.25,1.7,.65],[.12,.07,.08],[0,0,0],true);
+      mesh(orb,'#777b71',g,[side*.65,-1.7,0],[.4,1.2,.5]);
+      mesh(orb,'#aaa08a',g,[side*.7,-2.6,.35],[.6,.3,.8]);
+      mesh(orb,'#8a877b',g,[side*1.45,.1,0],[.55,1.3,.55],[0,0,side*.22]);
+    }
+    mesh(gem,'#b4a593',g,[1.8,-.6,.65],[.85,.7,.85]);
+    block(g,'#684e52',0,-.7,0,2.3,.6,1.7);
+  } else if (creature) creatureModel(g, kind);
   else {
   const skin = kind === 'hexer' ? '#373050' : kind === 'brute' ? '#652c35' : '#282b3d';
   const glow = kind === 'hexer' ? '#b48bff' : '#ff4c24';
@@ -439,7 +582,7 @@ export function createEnemy(kind = 'stalker') {
   const frost = mesh(ring, '#b8f2f2', g, [0, .1, 0], [1.55, 1.55, 1.55], [.5, 0, 0], true); frost.visible = false;
   const burn = new THREE.Group(); g.add(burn); burn.visible = false;
   for (let i = 0; i < 3; i++) mesh(cone, i === 1 ? '#ffe29a' : '#ff6324', burn, [Math.sin(i * 2.1) * .8, -.3, Math.cos(i * 2.1) * .8], [.3, 1.7, .3], [0, 0, .2], true);
-  g.userData = { ...g.userData, health, healthBack, charge, frost, burn, baseScale: kind === 'boss' ? 4.4 : kind === 'brute' ? 1.65 : creature ? 1 : 1.25 };
+  g.userData = { ...g.userData, health, healthBack, charge, frost, burn, baseScale: kind === 'giant' ? 3 : kind === 'boss' ? 4.4 : kind === 'brute' ? 1.65 : creature ? 1 : 1.25 };
   g.scale.setScalar(g.userData.baseScale);
   return g;
 }
