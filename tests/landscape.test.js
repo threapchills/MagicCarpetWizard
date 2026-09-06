@@ -41,3 +41,19 @@ test('projectile glow uses shared high-intensity cores and halos without extra l
   assert.equal(a.material, b.material); assert.equal(a.geometry, b.geometry); assert.equal(a.material.depthWrite, false);
   assert.ok(glowCore('#ff8833').color.r > 5); assert.equal(a.isLight, undefined);
 });
+
+test('boss arenas preserve identical scenery and only dissolve separately owned hazards', () => {
+  for (const index of [3, 10, 12, 44]) {
+    const chunk = generateChunk(index, 17), normal = createChunkVisual(chunk, 17), arena = createChunkVisual(chunk, 17, true);
+    const a = normal.userData.scenery.children, b = arena.userData.scenery.children;
+    assert.equal(a.length, b.length);
+    for (let i = 0; i < a.length; i++) {
+      assert.deepEqual(a[i].geometry.attributes.position.array, b[i].geometry.attributes.position.array);
+      assert.deepEqual(a[i].geometry.attributes.color.array, b[i].geometry.attributes.color.array);
+    }
+    assert.equal(normal.userData.hazards.visible, true); assert.equal(arena.userData.hazards.visible, false);
+    for (const m of normal.userData.hazards.children) { assert.equal(m.material.transparent, true); m.material.opacity = .2; }
+    for (const m of arena.userData.hazards.children) assert.equal(m.material.opacity, 1);
+    disposeChunk(normal); disposeChunk(arena);
+  }
+});

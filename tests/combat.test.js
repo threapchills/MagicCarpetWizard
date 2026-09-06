@@ -103,7 +103,8 @@ test('bosses have independent speed, lower HP, frequent attacks and a genuine ou
   const h = harness(); h.run.distance = 1400; h.run.speed = 102; h.battle.startBoss(h.run);
   let attacks = 0;
   for (let i = 0; i < 90 * 8 && h.battle.boss; i++) { h.run.distance += 102 / 90; h.battle.updateBoss(1 / 90, h.run); attacks = Math.max(attacks, h.battle.boss?.attack || 0); }
-  assert.equal(h.battle.boss, null); assert.ok(attacks >= 2); assert.equal(h.run.bosses, 0); assert.equal(h.shots.length, 0); assert.deepEqual(h.calls.arena, [true, false]);
+  // The entrance veil delays the first volley; a full-speed escape can beat the second.
+  assert.equal(h.battle.boss, null); assert.ok(attacks >= 1); assert.equal(h.run.bosses, 0); assert.equal(h.shots.length, 0); assert.deepEqual(h.calls.arena, [true, false]);
   const score = h.run.score; h.battle.updateBoss(.1, h.run); assert.equal(h.run.score, score);
 });
 test('biomes spawn distinct hordes, towers, mages, dragons and river-only fish deterministically', () => {

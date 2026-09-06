@@ -54,10 +54,13 @@ export class MagicField {
     for (const radius of [2.3, 2.8]) { const mesh = new THREE.Mesh(ring, mat('#9beed9', true)); mesh.scale.setScalar(radius); this.aura.add(mesh); }
     for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4, rune = new THREE.Mesh(shard, mat('#ffe3a8', true)); rune.position.set(Math.cos(a) * 2.55, Math.sin(a) * 2.55, 0); rune.scale.set(1, 2.7, 1); rune.rotation.z = a; this.aura.add(rune); }
     this.aura.visible = false;
+    this.magnetAura = new THREE.Group(); scene.add(this.magnetAura);
+    for (let i = 0; i < 2; i++) { const visual = new THREE.Mesh(ring, mat('#8ae0b4', true)); visual.scale.setScalar(3.2 + i * .65); this.magnetAura.add(visual); }
+    this.magnetAura.visible = false;
   }
   clear() {
     this.sparks.length = this.flashes.length = 0; this.castLife = this.trailClock = 0; this.wasBoosting = false;
-    this.burstCloud.geometry.setDrawRange(0, 0); this.aura.visible = false;
+    this.burstCloud.geometry.setDrawRange(0, 0); this.aura.visible = this.magnetAura.visible = false;
     this.lights.forEach(l => l.intensity = 0);
   }
   emit(x, y, s, color, count, power = 1) {
@@ -83,6 +86,11 @@ export class MagicField {
     this.emit(source.x, source.y, source.s, this.castColor, 7, .55);
     if (kind === 'storm') this.flash(source.x, source.y, source.s + 12, this.castColor, .65);
   }
+  pullTrail(pickup, dt) {
+    pickup.pullClock = (pickup.pullClock || 0) + dt;
+    if (pickup.pullClock < .075) return;
+    pickup.pullClock %= .075; this.emit(pickup.x, pickup.y, pickup.s, '#8ae0b4', 1, .2);
+  }
   checkpoint(x, y, s, radius, finish = false) {
     const color = finish ? '#ffda8b' : '#a6ffe3';
     // Burst around the gate rim, leaving the player's view through its center clear.
@@ -105,6 +113,11 @@ export class MagicField {
     placeOnWorld(light, x, s, y, distance); light.color.set(color); light.intensity = intensity; light.distance = reach;
   }
   update(dt, time, distance, run, bullets, environment, playing) {
+    this.magnetAura.visible = playing && run.spells.magnet > 0;
+    if (this.magnetAura.visible) {
+      placeOnWorld(this.magnetAura, run.x, distance, run.altitude - .35, distance); this.magnetAura.rotation.x -= Math.PI / 2;
+      this.magnetAura.rotation.z = -time; this.magnetAura.scale.setScalar(1 + run.spells.magnet * .12 + Math.sin(time * 3) * .06);
+    }
     if (dt > 0 && playing && run.boost && !this.wasBoosting) {
       for (let i = 0; i < 20; i++) {
         const angle = i / 20 * Math.PI * 2;

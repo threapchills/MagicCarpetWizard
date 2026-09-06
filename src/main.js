@@ -14,6 +14,7 @@ import { MagicField } from './magic.js';
 import { RACE_LEVELS, RaceRecords, createCourse, createAttempt, generateRaceChunk, stepRace, formatTime, checkpointDelta } from './race.js';
 import { RaceView } from './race-view.js';
 import { ADVENTURE_TIME_SCALE, balanceAt } from './pacing.js';
+import { magnetRadius, pullCollectible } from './collectibles.js';
 import './race.css';
 
 const $ = id => document.getElementById(id);
@@ -46,6 +47,7 @@ let state = 'menu', run = createRun(), globalTime = 0, lastTime = performance.no
 let menuDistance = 90, lastZone = 0, bannerTime = 0, toastTime = 0, flashTime = 0, shootHeld = false, helpWasRunning = false;
 let notifyPriority = 0, hitTime = 0, trailClock = 0, particleClock = 0, accumulator = 0;
 let deathTime = 0;
+let arenaVeilTime = 0;
 let audioEnvironment = {};
 let windowFocused = true;
 const battle = new Battle(scene, chunks, bullets, enemyShots, {
@@ -91,6 +93,7 @@ function updateSpellTray() {
   }
 }
 function clearWorld() {
+  arenaVeilTime = 0; $('boss-veil').style.opacity = '0';
   raceView.clear();
   battle.clear(); blood.clear(); magic.clear();
   for (const c of chunks.values()) { scene.remove(c.visual); disposeChunk(c.visual); for (const item of [...c.pickups, ...c.enemies, ...c.rings, ...(c.props || [])]) scene.remove(item.visual); }
@@ -108,7 +111,7 @@ function ensureChunks(distance, seed) {
   }
   for (let id = Math.max(0, index - 2); id <= index + 8; id++) {
     if (chunks.has(id)) continue;
-    const c = raceAttempt ? raceAttempt.collisionChunks[id] || generateRaceChunk(id, raceAttempt.course) : generateChunk(id, seed); c.combatClear = !!battle.boss; c.visual = createChunkVisual(c, seed, c.combatClear); scene.add(c.visual);
+    const c = raceAttempt ? raceAttempt.collisionChunks[id] || generateRaceChunk(id, raceAttempt.course) : generateChunk(id, seed); c.combatClear = !!battle.boss; c.arenaBlend = c.combatClear ? 1 : 0; c.visual = createChunkVisual(c, seed, c.combatClear); scene.add(c.visual);
     for (const p of c.props || []) { p.visual = createBreakable(p.kind); p.visual.visible = p.active; scene.add(p.visual); }
     for (const p of c.pickups) { p.visual = createPickup(p.kind); scene.add(p.visual); p.active = true; }
     for (const e of c.enemies) { e.visual = createEnemy(e.kind); scene.add(e.visual); e.active = true; e.baseX = e.x; e.baseY = e.y; e.baseS = e.s; e.radius ||= 2.4; e.maxHp = e.hp; e.cooldown = .85 + (e.spawnDelay || 0); e.frozen = 0; }
@@ -117,11 +120,16 @@ function ensureChunks(distance, seed) {
   }
 }
 function setArena(active) {
+  if (active) {
+    arenaVeilTime = 1.8; run.invulnerable = Math.max(run.invulnerable, 1.8);
+    bannerTime = 0; $('zone-banner').classList.remove('show');
+    for (const c of chunks.values()) for (const o of c.obstacles) if (o.s > run.distance && o.s < run.distance + 160) magic.emit(o.x, o.height * .4, o.s, '#dab18a', 12, 1.8);
+  }
   for (const c of chunks.values()) {
-    c.combatClear = active || c.start < run.distance + 128;
-    scene.remove(c.visual); disposeChunk(c.visual);
-    c.visual = createChunkVisual(c, run.seed, c.combatClear); scene.add(c.visual);
-    if (!active && c.combatClear) for (const e of c.enemies) { e.active = false; e.visual.visible = false; }
+    // Existing geometry stays cleared after the fight. Normal hazards return
+    // only in newly streamed chunks, beyond the visible horizon.
+    c.combatClear = true;
+    if (!active) for (const e of c.enemies) { e.active = false; e.visual.visible = false; }
   }
 }
 function begin(mode = 'adventure') {
@@ -293,17 +301,20 @@ function fire() { battle.fire(run, aim, camera); }
 function updateEntities(dt, distance, playing, previousDistance = distance) {
   for (const c of chunks.values()) {
     placeOnWorld(c.visual, 0, c.start, 0, distance);
+    if (c.combatClear) c.arenaBlend = Math.min(1, c.arenaBlend + dt / .95);
+    const hazards = c.visual.userData.hazards;
+    hazards.visible = c.arenaBlend < 1;
+    hazards.traverse(m => { if (m.isMesh) { m.material.opacity = 1 - c.arenaBlend; m.material.depthWrite = c.arenaBlend === 0; m.castShadow = c.arenaBlend === 0; } });
     for (const p of c.props || []) {
-      p.visual.visible = p.active && !c.combatClear; placeOnWorld(p.visual, p.x, p.s, p.y, distance);
+      p.visual.visible = p.active && c.arenaBlend < 1; p.visual.scale.setScalar(1 - c.arenaBlend); placeOnWorld(p.visual, p.x, p.s, p.y, distance);
       if (playing && p.active && !c.combatClear && Math.abs(p.s - distance) < p.radius && Math.hypot(p.x - run.x, p.y - run.altitude) < p.radius + .6) hurt();
     }
     for (const p of c.pickups) {
       if (!p.active) continue;
-      const ahead = p.s - distance;
-      if (playing && ahead < 17 && ahead > -3) {
-        const range = (p.kind === 'gold' ? 2.8 : 3.5) + run.spells.magnet * 1.3;
-        const d = Math.hypot(p.x - run.x, p.y - run.altitude, ahead);
-        if (run.spells.magnet && d < 8 + run.spells.magnet * 2) { p.x = lerp(p.x, run.x, dt * 5); p.y = lerp(p.y, run.altitude, dt * 5); }
+      if (playing) {
+        if (pullCollectible(p, run, dt)) magic.pullTrail(p, dt);
+        const range = p.kind === 'gold' ? 2.8 : 3.5;
+        const d = Math.hypot(p.x - run.x, p.y - run.altitude, p.s - distance);
         if (d < range) {
           p.active = false; p.visual.visible = false;
           if (p.kind === 'gold') { award(run, 15, 2, false); if (run.chain) run.chainTimer = Math.max(run.chainTimer, 3); sound.collect(); }
@@ -311,7 +322,7 @@ function updateEntities(dt, distance, playing, previousDistance = distance) {
           particleBurst(p.x, p.y, p.s, p.kind === 'gold' ? '#ffe5a6' : SPELLS[p.kind].color, p.kind === 'gold' ? 4 : 20); continue;
         }
       }
-      placeOnWorld(p.visual, p.x, p.s, p.y + Math.sin(globalTime * 2 + p.s) * .18, distance); p.visual.rotation.y = globalTime * 1.5 + p.s;
+      placeOnWorld(p.visual, p.x, p.s, p.y + Math.sin(globalTime * 2 + p.s) * .18, distance); p.visual.rotation.y = globalTime * (p.attracted ? 7 : 1.5) + p.s;
     }
     for (const r of c.rings) {
       if (!r.active) continue;
@@ -339,6 +350,7 @@ function updateParticles(dt, distance) {
   particles.forEach((p, i) => { placeOnWorld(particleTransform, p.x, p.s, p.y, distance); particleTransform.scale.setScalar(p.life * .22); particleTransform.rotation.z = globalTime * 3; particleTransform.updateMatrix(); particleMesh.setMatrixAt(i, particleTransform.matrix); particleMesh.setColorAt(i, particleColor.set(p.color)); });
   particleMesh.instanceMatrix.needsUpdate = true; if (particleMesh.instanceColor) particleMesh.instanceColor.needsUpdate = true;
 }
+function activePassage(distance) { return !raceAttempt && !battle.boss && !chunks.get(Math.floor(distance / CHUNK))?.combatClear && passageAt(distance); }
 function updateAtmosphere(dt, distance) {
   const z = ZONES[raceAttempt ? raceAttempt.course.zone : zoneAt(distance)], cycle = state === 'menu' ? .14 : run.time / 150 + .14;
   const daylight = (Math.sin(cycle * Math.PI * 2) + 1) / 2, night = 1 - THREE.MathUtils.smoothstep(daylight, .12, .6);
@@ -352,7 +364,7 @@ function updateAtmosphere(dt, distance) {
   sky.uniforms.top.value.lerp(skyTop, dt * .5); sky.uniforms.bottom.value.lerp(horizon, dt * .5); scene.fog.color.lerp(horizon, dt * .5);
   scene.fog.far = lerp(scene.fog.far, sand ? 200 : storm ? 250 : raining ? 340 : 480, dt * .3);
   planetMaterial.color.lerp(new THREE.Color(z.ground), dt * .5);
-  const enclosed = !raceAttempt && !battle.boss && passageAt(distance);
+  const enclosed = activePassage(distance);
   caveLight.intensity = lerp(caveLight.intensity, enclosed ? 45 : 0, 1 - Math.exp(-dt * 4));
   placeOnWorld(caveLight, run.x * .35, distance + 15, 15, distance);
   sunlight.position.y = 65 + elevationAt(distance); sunlight.target.position.y = elevationAt(distance);
@@ -415,7 +427,7 @@ function updateCamera(dt) {
   if (state === 'menu') { goalPosition.set(11 + Math.sin(globalTime * .08) * 3, 26, 48); goalLook.set(-19, 1, -35); }
   else {
     const curvature = run.x * run.x / (2 * RADIUS) - elevationAt(run.distance);
-    const cameraHeight = !raceAttempt && !battle.boss && passageAt(run.distance) ? Math.min(28, 7.5 + run.altitude * .82) : 7.5 + run.altitude * .82;
+    const cameraHeight = activePassage(run.distance) ? Math.min(28, 7.5 + run.altitude * .82) : 7.5 + run.altitude * .82;
     goalPosition.set(run.x * .96 + 1.2, cameraHeight - curvature, run.boost ? 23 : 22);
     goalLook.set(run.x + run.vx * .12, 1.5 + run.altitude * .72 - curvature, -45);
   }
@@ -439,10 +451,10 @@ function updateUI(weather) {
   const balance = balanceAt(run.distance);
   $('journey-stage').textContent = balance.respite > .6 ? 'CATCH YOUR BREATH' : balance.stage;
   $('next-zone').textContent = `${Math.ceil(ZONE_LENGTH - run.distance % ZONE_LENGTH)} m to ${ZONES[(zone + 1) % ZONES.length].name}`;
-  $('combat-buffs').textContent = Object.entries(run.buffs).filter(([, t]) => t > 0).map(([kind, t]) => SPELLS[kind].name.toUpperCase() + ' ' + Math.ceil(t) + 's').join('  ·  ');
+  $('combat-buffs').textContent = [...(run.spells.magnet ? [`MAGNET · ${magnetRadius(run.spells.magnet)}m`] : []), ...Object.entries(run.buffs).filter(([, t]) => t > 0).map(([kind, t]) => SPELLS[kind].name.toUpperCase() + ' ' + Math.ceil(t) + 's')].join('  ·  ');
   $('active-spell').textContent = SPELLS[run.weapon].name.toUpperCase() + ' · LV ' + run.spells[run.weapon] + ' · 1 / 2 / 3 OR Q';
   const nextRail = cliffRailAt(run.distance + 140), railPhrase = Math.floor((run.distance + 140) / 2560);
-  const passage = !raceAttempt && passageAt(run.distance + 200);
+  const passage = activePassage(run.distance + 200);
   if (passage && !battle.boss && run.passageNotified !== passage.start) { run.passageNotified = passage.start; notify('CLIFF PASSAGE AHEAD · CENTER UP · BELOW 30m', 4, 4); }
   if (nextRail && !raceAttempt && !battle.boss && run.railNotified !== railPhrase) {
     run.railNotified = railPhrase;
@@ -460,6 +472,10 @@ function frame(now) {
   const frozen = state === 'paused' || !$('help-screen').hidden;
   const timeScale = raceAttempt || state === 'menu' || state === 'race-setup' ? 1 : ADVENTURE_TIME_SCALE;
   const worldDt = frozen ? 0 : dt * timeScale; globalTime += worldDt;
+  arenaVeilTime = Math.max(0, arenaVeilTime - worldDt);
+  const veilProgress = 1 - arenaVeilTime / 1.8;
+  $('boss-veil').style.opacity = String(.62 * Math.max(0, Math.min(1, veilProgress / .12, (1 - veilProgress) / .55)));
+  $('boss-veil').style.setProperty('--veil-drift', `${(veilProgress - .5) * 16}%`);
   const playing = state === 'playing';
   if (playing) {
     const steer = (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0);
@@ -480,7 +496,7 @@ function frame(now) {
       accumulator -= STEP;
     }
     while (run.events.length) { const event = run.events.pop(); notify(event === 'rail' ? 'CLIFF RIDER · +45 · +SKYFIRE' : `Silk spiral · +${90 * multiplier(run)} · +11 skyfire`, 1.2); if (event !== 'rail') sound.trick(); }
-    const nextZone = zoneAt(run.distance); if (!raceAttempt && nextZone !== lastZone) { lastZone = nextZone; banner(lastZone); }
+    const nextZone = zoneAt(run.distance); if (!raceAttempt && nextZone !== lastZone) { lastZone = nextZone; if (!battle.boss) banner(lastZone); }
   }
   const distance = state === 'menu' ? menuDistance : run.distance;
   ensureChunks(distance, run.seed);

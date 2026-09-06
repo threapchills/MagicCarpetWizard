@@ -21,7 +21,7 @@ export const SPELLS = {
   frost: { name: 'Frost', glyph: '❄', color: '#9ce8ed', description: 'Frost · slows enemies; fire shatters frozen foes' },
   storm: { name: 'Storm', glyph: 'ϟ', color: '#edda86', description: 'Storm · lightning jumps between enemies' },
   echo: { name: 'Echo', glyph: '✧', color: '#d4b6ff', description: 'Echo · extra spell bolts' },
-  magnet: { name: 'Charm', glyph: '◎', color: '#8ae0b4', description: 'Charm · draws gold and power toward you' },
+  magnet: { name: 'Magnet', glyph: '∪', color: '#8ae0b4', description: 'Magnet · pulls gold, power-ups and monster loot · 28 / 40 / 52 m range' },
   ward: { name: 'Ward', glyph: '◇', color: '#99ddff', description: 'Ward · restores a heart and shields you briefly' },
   wind: { name: 'Wind blast', glyph: '≋', color: '#a6ffdd', description: 'Wind blast · shove monsters, clear hostile spells, fan flames' },
   rapid: { name: 'Rapid fire', glyph: '»', color: '#ff9ce3', description: 'Rapid Fire · faster casting for 10 seconds' },
@@ -111,7 +111,9 @@ export function generateChunk(index, seed) {
   }
   if (index > 2 && index % 3 === 0) {
     const kinds = ['frost', 'storm', 'echo', 'fire', 'wind', 'magnet', 'ward', 'rapid', 'fury', 'focus'];
-    pickups.push({ kind: kinds[Math.floor(rng() * kinds.length)], x: laneX, s: start + 40, y: 5.5 + rng() * 5 });
+    const kind = kinds[Math.floor(rng() * kinds.length)], height = 5.5 + rng() * 5;
+    const guaranteedMagnet = index % 48 === 6;
+    pickups.push({ kind: guaranteedMagnet ? 'magnet' : kind, x: laneX, s: start + 40, y: guaranteedMagnet ? 3 : height });
   }
   enemies.push(...spawnEnemies(type, index, start, difficulty, rng, obstacles));
   if (passageAt(start)) { obstacles.length = 0; enemies.length = 0; rings.length = 0; for (const p of pickups) { p.x *= .45; p.y = Math.min(p.y, 20); } }

@@ -5,6 +5,7 @@ import { FOES, moveEnemy } from './foes.js';
 import { createHalo, glowCore } from './glow.js';
 import { elevationAt } from './landscape.js';
 import { balanceAt, FIRST_BOSS_DISTANCE } from './pacing.js';
+import { pullCollectible } from './collectibles.js';
 import { mesh, mat, gem, orb, createEnemy, createPickup, placeOnTerrain as placeOnWorld } from './world.js';
 
 const hoop = new THREE.TorusGeometry(1, .055, 5, 36);
@@ -244,7 +245,7 @@ export class Battle {
   }
   startBoss(run) {
     this.boss = makeBoss(++this.encounters, run.distance); const b = this.boss;
-    const balance = balanceAt(run.distance); b.interval *= balance.attackInterval; b.cooldown *= balance.warning; b.warningTime = .65 * balance.warning;
+    const balance = balanceAt(run.distance); b.interval *= balance.attackInterval; b.cooldown = Math.max(2.2, b.cooldown * balance.warning); b.warningTime = .65 * balance.warning;
     b.visual = createEnemy(b.kind); b.visual.scale.setScalar(b.scale); this.scene.add(b.visual); b.visual.userData.health.visible = b.visual.userData.healthBack.visible = false;
     for (const e of this.roamers) this.scene.remove(e.visual); this.roamers.length = 0;
     this.sigils(b); this.hooks.arena(true); this.shots.forEach(p => this.scene.remove(p.visual)); this.shots.length = 0;
@@ -334,10 +335,11 @@ export class Battle {
       if (p.life <= 0 || p.s < run.distance - 110 || p.s > run.distance + 250 || p.y < -3) { this.scene.remove(p.visual); this.shots.splice(i, 1); }
     }
     for (let i = this.drops.length - 1; i >= 0; i--) {
-      const p = this.drops[i], ahead = p.s - run.distance, d = Math.hypot(p.x - run.x, p.y - run.altitude, ahead);
-      if (d < 12 + run.spells.magnet * 4) { p.x = lerp(p.x, run.x, 1 - Math.exp(-dt * 8)); p.y = lerp(p.y, run.altitude, 1 - Math.exp(-dt * 8)); }
-      if (d < 4.5 + run.spells.magnet || ahead < -12) {
-        if (d < 4.5 + run.spells.magnet) this.collect(run, p.kind);
+      const p = this.drops[i];
+      if (pullCollectible(p, run, dt, 12) && run.spells.magnet) this.hooks.magic?.pullTrail(p, dt);
+      const ahead = p.s - run.distance, d = Math.hypot(p.x - run.x, p.y - run.altitude, ahead);
+      if (d < 4.5 || (!p.attracted && ahead < -12)) {
+        if (d < 4.5) this.collect(run, p.kind);
         this.scene.remove(p.visual); this.drops.splice(i, 1);
       }
     }

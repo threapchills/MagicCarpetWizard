@@ -50,3 +50,7 @@ body.playing .spell-tray{pointer-events:none}
 @media(max-width:800px){#boss-hud{top:185px;width:58vw}#boss-name{font-size:12px}.spell-tray{bottom:206px;max-width:90vw}#active-spell{bottom:183px}#combat-buffs{bottom:285px;font-size:12px}}
 @media(max-width:800px){.route-progress{top:148px;width:180px}.run-stats{top:196px}.chain{top:200px}#roll-ready{bottom:146px}.route-progress>span{font-size:9px}}
 @media(prefers-reduced-motion:reduce){.loading-star{animation:none}#crosshair,.route-progress i{transition:none}body.boosting #vignette{box-shadow:none}}
+/* Passing dust conceals the arena dissolve while the controls and HUD stay clear. */
+#boss-veil{position:fixed;inset:-18%;z-index:1;opacity:0;pointer-events:none;transform:translateX(var(--veil-drift,0%)) rotate(-8deg);filter:blur(13px);background:radial-gradient(ellipse at 18% 68%,#ceb08ded 0 15%,transparent 47%),radial-gradient(ellipse at 77% 31%,#796b84dd 0 13%,transparent 48%),radial-gradient(ellipse at 53% 54%,#dfc5a7cc 0 9%,transparent 43%)}
+#hud{position:relative;z-index:2}#toast,#zone-banner,#damage-flash{z-index:3}
+@media(prefers-reduced-motion:reduce){#boss-veil{transform:none}}

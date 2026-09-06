@@ -48,7 +48,9 @@ test('application boots, flies, casts, rolls once per press, pauses, resumes and
     source += '\nexport const enterBoss = () => { run.distance = battle.nextBoss; run.invulnerable = 999; run.buffs.rapid = 10; ensureChunks(run.distance, run.seed); };';
     source += '\nexport const raceSnapshot = () => ({ state, player: raceAttempt?.player, elapsed: raceAttempt?.elapsed, countdown: raceAttempt?.countdown, ghost: !!raceAttempt?.ghost, seed: raceAttempt?.course.seed, gates: raceView.gates.length, next: raceAttempt?.nextGate, records: raceRecords.get(raceLevel).best.map(b => b?.time), racing: document.body.classList.contains("racing") });';
     source += '\nexport const approachNextGate = () => { const g = raceAttempt.course.gates[raceAttempt.nextGate]; Object.assign(run, { distance: g.s - .1, x: g.x, altitude: g.y, vx: 0, vy: 0 }); };';
-    const { snapshot, enterBoss, raceSnapshot, approachNextGate } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
+    source += '\nexport const arenaSnapshot = () => [...chunks.values()].map(c => ({ id: c.index, visual: c.visual.uuid, scenery: c.visual.userData.scenery.uuid, blend: c.arenaBlend, cleared: c.combatClear }));';
+    source += '\nexport const leaveBoss = () => battle.escapeBoss(run, true);';
+    const { snapshot, enterBoss, raceSnapshot, approachNextGate, arenaSnapshot, leaveBoss } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
     advance(.1); assert.equal(snapshot().state, 'menu');
     dispatch('keydown', { code: 'Enter', target: { tagName: 'BUTTON' } }); assert.equal(snapshot().state, 'menu');
     elements.get('start').onclick(); dispatch('keydown', { code: 'KeyW' }); advance(2.1); dispatch('keyup', { code: 'KeyW' });
@@ -77,10 +79,14 @@ test('application boots, flies, casts, rolls once per press, pauses, resumes and
     dispatch('keydown', { code: 'Digit2' }); assert.equal(snapshot().weapon, 'storm');
     dispatch('keydown', { code: 'Digit3' }); assert.equal(snapshot().weapon, 'wind');
     dispatch('keydown', { code: 'KeyQ' }); assert.equal(snapshot().weapon, 'fire');
-    enterBoss(); advance(.2); assert.equal(snapshot().boss, true); assert.equal(snapshot().arenaClear, true); assert.equal(elements.get('boss-hud').hidden, false);
+    enterBoss(); const beforeArena = arenaSnapshot(); advance(.2); assert.equal(snapshot().boss, true); assert.equal(snapshot().arenaClear, true); assert.equal(elements.get('boss-hud').hidden, false);
+    for (const c of arenaSnapshot()) { const before = beforeArena.find(b => b.id === c.id); if (before) { assert.equal(c.visual, before.visual); assert.equal(c.scenery, before.scenery); } }
+    assert.ok(arenaSnapshot().some(c => c.blend > 0 && c.blend < 1));
     elements.get('pause').onclick(); const bossAge = snapshot().bossAge, buff = snapshot().buff; advance(2);
     assert.equal(snapshot().bossAge, bossAge); assert.equal(snapshot().buff, buff);
     elements.get('resume').onclick(); advance(2); assert.ok(snapshot().bossAge > bossAge);
+    const beforeExit = arenaSnapshot(); leaveBoss();
+    assert.deepEqual(arenaSnapshot(), beforeExit, 'boss exit cannot rebuild or reintroduce visible obstacles');
     elements.get('pause').onclick(); elements.get('pause-restart').onclick();
     assert.equal(snapshot().boss, false); assert.equal(snapshot().arenaClear, false); assert.equal(snapshot().buff, 0); assert.equal(elements.get('boss-hud').hidden, true);
     advance(.1); assert.ok(renders > 1000);

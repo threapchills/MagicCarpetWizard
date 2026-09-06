@@ -22,6 +22,7 @@ const orb = new THREE.SphereGeometry(1, 12, 8);
 const dome = new THREE.SphereGeometry(1, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2);
 const gem = new THREE.OctahedronGeometry(1, 0);
 const ring = new THREE.TorusGeometry(1, .08, 5, 32);
+const magnetArc = new THREE.TorusGeometry(.72, .22, 8, 24, Math.PI);
 const arch = new THREE.Shape(); arch.moveTo(-.5, 0); arch.lineTo(-.5, .62); arch.quadraticCurveTo(-.48, .84, 0, 1); arch.quadraticCurveTo(.48, .84, .5, .62); arch.lineTo(.5, 0);
 const archGeo = new THREE.ShapeGeometry(arch, 5);
 export function mesh(geometry, color, parent, position = [0, 0, 0], scale = [1, 1, 1], rotation = [0, 0, 0], glow = false) {
@@ -160,7 +161,7 @@ function landmark(parent, type, side, rng) {
 }
 
 export function createChunkVisual(data, seed, arena = false) {
-  const rng = random(seed + data.index * 7919), g = new THREE.Group(), type = ZONES[data.zone].type;
+  const rng = random(seed + data.index * 7919), g = new THREE.Group(), hazards = new THREE.Group(), type = ZONES[data.zone].type;
   // Broad ground segments are curved across the planet's latitude.
   for (let x = -216; x <= 216; x += 12) {
     const tile = block(g, ZONES[data.zone].ground, x, -.65 - x * x / (2 * RADIUS), -CHUNK / 2, 12.2, 1.1, CHUNK + .2); tile.rotation.z = -x / RADIUS;
@@ -215,7 +216,7 @@ export function createChunkVisual(data, seed, arena = false) {
     }
   }
   const rail = data.disableRails ? null : cliffRailAt(data.start);
-  if (rail && !arena) {
+  if (rail) {
     // The inner face stays at |x|=56, just outside the playable boundary.
     // Low ledge stripes mark the wall that grants cliff-skimming speed.
     for (let i = 0; i < 4; i++) {
@@ -226,15 +227,15 @@ export function createChunkVisual(data, seed, arena = false) {
       rock(g, rail.side * (77 + rng() * 12), z, 12, 52 + rng() * 20, '#ba8168', rng);
     }
   }
-  for (const e of arena ? [] : data.enemies || []) if (e.kind === 'guard') {
+  for (const e of data.enemies || []) if (e.kind === 'guard') {
     const z = -(e.s - data.start), base = -e.x * e.x / (2 * RADIUS), h = e.y - 1.7;
     block(g, '#b99072', e.x, base + h / 2, z, 6, h, 6);
     block(g, '#efd3a0', e.x, base + h, z, 7, .7, 7);
     for (const side of [-1, 1]) block(g, '#c39e7c', e.x + side * 2.6, base + h + .7, z, 1, 1.4, 6);
     windowOn(g, e.x, base + h * .65, z + 3.04, 1.4, 3);
   }
-  for (const o of arena ? [] : data.obstacles) {
-    const body = new THREE.Group(); body.position.set(o.x, -o.x * o.x / (2 * RADIUS), -(o.s - data.start)); body.rotation.y = o.angle || 0; g.add(body);
+  for (const o of data.obstacles) {
+    const body = new THREE.Group(); body.position.set(o.x, -o.x * o.x / (2 * RADIUS), -(o.s - data.start)); body.rotation.y = o.angle || 0; hazards.add(body);
     if (type === 'city' || type === 'palace' || type === 'farm') {
       block(body, rng() > .5 ? '#e8b380' : '#edc89b', 0, o.height / 2, 0, o.width, o.height, o.depth);
       block(body, '#f6d9a6', 0, o.height - .18, 0, o.width + .2, .35, o.depth + .2);
@@ -251,16 +252,19 @@ export function createChunkVisual(data, seed, arena = false) {
       block(body, '#d6aa84', 0, o.height - .3, 0, o.width + .1, .6, o.depth + .1);
     }
   }
-  const passage = !arena && !data.disablePassages && passageAt(data.start);
+  const passage = !data.disablePassages && passageAt(data.start);
   if (passage) {
     for (const side of [-1, 1]) {
-      block(g, '#795c61', side * 74, 39, -32, 90, 80, CHUNK + .2);
-      for (let i = 0; i < 4; i++) block(g, i % 2 ? '#b18b75' : '#a47668', side * 29.3, 6 + i * 8, -32, .65, .8, CHUNK + .2);
-      mesh(gem, '#74f2da', g, [side * 27.7, 9, -16], [.5, 1.7, .5], [0, 0, .2], true);
-      mesh(gem, '#ffd29a', g, [side * 27.7, 17, -48], [.5, 1.7, .5], [0, 0, -.2], true);
+      // Keep the distant cliff mass intact; only the inner lip obstructs combat.
+      block(g, '#795c61', side * 90, 39, -32, 58, 80, CHUNK + .2);
+      block(hazards, '#795c61', side * 45, 39, -32, 32, 80, CHUNK + .2);
+      for (let i = 0; i < 4; i++) block(hazards, i % 2 ? '#b18b75' : '#a47668', side * 29.3, 6 + i * 8, -32, .65, .8, CHUNK + .2);
+      mesh(gem, '#74f2da', hazards, [side * 27.7, 9, -16], [.5, 1.7, .5], [0, 0, .2], true);
+      mesh(gem, '#ffd29a', hazards, [side * 27.7, 17, -48], [.5, 1.7, .5], [0, 0, -.2], true);
     }
-    block(g, '#725b62', 0, 57, -32, 59, 50, CHUNK + .2);
-    for (const side of [-1, 1]) block(g, '#c18f72', side * 21, 34, -32, 12, 8, CHUNK + .2, side * .28);
+    block(g, '#725b62', 0, 70, -32, 59, 24, CHUNK + .2);
+    block(hazards, '#725b62', 0, 45, -32, 59, 26, CHUNK + .2);
+    for (const side of [-1, 1]) block(hazards, '#c18f72', side * 21, 34, -32, 12, 8, CHUNK + .2, side * .28);
   }
   if (data.index % 6 === 3) landmark(g, type, Math.floor(data.index / 6) % 2 ? -1 : 1, rng);
   // Gold roadside lanterns make the flight corridor legible at night.
@@ -269,7 +273,17 @@ export function createChunkVisual(data, seed, arena = false) {
     block(g, '#8f7967', x, 2 - x * x / (2 * RADIUS), z, .18, 4, .18);
     mesh(gem, '#ffe0a1', g, [x, 4.3 - x * x / (2 * RADIUS), z], [.5, .9, .5], [0, .4, 0], true);
   }
-  return mergeGroup(g, data.start);
+  // Build both layers with the same random sequence. Arena mode never rerolls
+  // landmarks, foliage, terrain, roadside towers or lanterns.
+  const result = new THREE.Group(), scenery = mergeGroup(g, data.start), hazardVisual = mergeGroup(hazards, data.start);
+  hazardVisual.traverse(m => { if (m.isMesh) {
+    const source = m.material; m.material = source.clone();
+    m.material.onBeforeCompile = source.onBeforeCompile; m.material.customProgramCacheKey = source.customProgramCacheKey;
+    m.material.transparent = true; m.material.userData.chunkOwned = true;
+  } });
+  hazardVisual.visible = !arena; result.add(scenery, hazardVisual);
+  result.userData.scenery = scenery; result.userData.hazards = hazardVisual;
+  return result;
 }
 export function placeOnWorld(object, x, s, height, distance) {
   const a = (s - distance) / RADIUS, r = RADIUS + height - x * x / (2 * RADIUS);
@@ -310,6 +324,14 @@ export function createCarpet() {
 export function createPickup(kind) {
   const g = new THREE.Group();
   if (kind === 'gold') { mesh(gem, '#ffd88e', g, [0, 0, 0], [.34, .6, .34], [0, 0, .3], true); mesh(ring, '#eeb564', g, [0, 0, 0], [.55, .55, .55]); }
+  else if (kind === 'magnet') {
+    mesh(magnetArc, '#8ae0b4', g, [0, -.05, 0], [1, 1, 1], [0, 0, Math.PI], true);
+    for (const side of [-1, 1]) {
+      mesh(box, '#8ae0b4', g, [side * .72, .23, 0], [.44, .6, .44], [0, 0, 0], true);
+      mesh(box, '#fff2d0', g, [side * .72, .63, 0], [.47, .22, .47], [0, 0, 0], true);
+    }
+    mesh(ring, '#fff2d0', g, [0, 0, 0], [1.55, 1.55, 1.55], [.25, .3, 0], true);
+  }
   else {
     const colors = Object.fromEntries(Object.entries(SPELLS).map(([key, value]) => [key, value.color]));
     mesh(gem, colors[kind], g, [0, 0, 0], [.85, 1.2, .85], [0, .3, 0], true);
@@ -456,5 +478,5 @@ export function createSky(scene) {
   }
   scene.add(lanterns); return { uniforms, sun, moon, stars, clouds, lanterns };
 }
-export function disposeChunk(group) { group.traverse(m => { if (m.isMesh) m.geometry.dispose(); }); }
+export function disposeChunk(group) { group.traverse(m => { if (m.isMesh) { m.geometry.dispose(); if (m.material.userData.chunkOwned) m.material.dispose(); } }); }
 export { gem, orb, ring };
