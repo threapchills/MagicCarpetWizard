@@ -10,7 +10,7 @@ export const FOES = {
   dragon: { name: 'Ember drake', hp: 12, radius: 4, interval: 1.5, warning: .65, speed: 64, mobile: true },
   wizard: { name: 'Rogue carpet mage', hp: 7, radius: 2.6, interval: 1.35, warning: .6, speed: 68, mobile: true },
   fish: { name: 'River fang', hp: 2, radius: 1.8, interval: Infinity, warning: 0, speed: 0 },
-  giant: { name: 'Kandahar giant', hp: 18, radius: 6, interval: 2, warning: 1, speed: 65 },
+  giant: { name: 'Stonewalker', hp: 18, radius: 6, interval: 2, warning: 1, speed: 65 },
 };
 export function spawnEnemies(type, index, start, difficulty, rng, obstacles) {
   const balance = balanceAt(start);

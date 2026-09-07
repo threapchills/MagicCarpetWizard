@@ -10,18 +10,18 @@ export const MAX_ALTITUDE = 54;
 export const LANE_SPACING = 22;
 export const ZONES = [
   { name: 'The Amber City', subtitle: 'A thousand rooftops. Not a single road.', ground: '#dfa06c', sky: '#c3ded7', fog: '#c7d8c5', accent: '#309b98', type: 'city' },
-  { name: 'The Sultan’s Gardens', subtitle: 'Even the fountains have stories to tell.', ground: '#89a679', sky: '#c6dfdb', fog: '#bbd5bf', accent: '#dfba66', type: 'palace' },
+  { name: 'The Gilded Gardens', subtitle: 'Even the fountains have stories to tell.', ground: '#89a679', sky: '#c6dfdb', fog: '#bbd5bf', accent: '#dfba66', type: 'palace' },
   { name: 'The Saffron Sea', subtitle: 'Follow the wind. Leave only wonder.', ground: '#e6b775', sky: '#d8dfc6', fog: '#e6c895', accent: '#cd7655', type: 'desert' },
   { name: 'The Singing Canyons', subtitle: 'Stone remembers every passing storm.', ground: '#bb7963', sky: '#c9c2d3', fog: '#c7a593', accent: '#ce8b69', type: 'canyon' },
   { name: 'The River of Stars', subtitle: 'A ribbon of blue between two eternities.', ground: '#629f99', sky: '#b0d6d6', fog: '#a2c7be', accent: '#54b8b6', type: 'river' },
   { name: 'The Emerald Fields', subtitle: 'Where the earth dreams in green.', ground: '#9ca971', sky: '#caddca', fog: '#c9cba0', accent: '#67a282', type: 'farm' },
   { name: 'The Ancestors’ Reach', subtitle: 'Old magic. New horizons.', ground: '#c49186', sky: '#b9b7d1', fog: '#c2a5b3', accent: '#aa89ba', type: 'ancient' },
   { name: 'The Lantern Fishing Village', subtitle: 'Sails, salt and a thousand small wishes.', ground: '#cfb995', sky: '#afd9d6', fog: '#bad1c8', accent: '#eea76e', type: 'fishing' },
-  { name: 'The Kandahar Mountains', subtitle: 'The mountains have begun to walk.', ground: '#a99baf', sky: '#c5d7ea', fog: '#b7b9d0', accent: '#e6c2a0', type: 'mountain' },
+  { name: 'The Waking Peaks', subtitle: 'The mountains have begun to walk.', ground: '#a99baf', sky: '#c5d7ea', fog: '#b7b9d0', accent: '#e6c2a0', type: 'mountain' },
   { name: 'The Jade Jungle', subtitle: 'Every leaf hides another world.', ground: '#648e77', sky: '#c5dc9f', fog: '#9ab99e', accent: '#e7a969', type: 'jungle' },
   { name: 'The Opal Beach', subtitle: 'Skim the tide. Chase the foam.', ground: '#efd4a8', sky: '#9fd8dd', fog: '#bde0d8', accent: '#edb99c', type: 'beach' },
-  { name: 'The Spice Island', subtitle: 'Clove, cinnamon and sleeping fire.', ground: '#bd947a', sky: '#e1bcb9', fog: '#d4bfa7', accent: '#e4a34f', type: 'island' },
-  { name: 'The Mountain Temples', subtitle: 'Prayer flags at the edge of heaven.', ground: '#b6b2ba', sky: '#c0c5e1', fog: '#ccbacf', accent: '#dca357', type: 'temple' },
+  { name: 'The Smouldering Isle', subtitle: 'Ash, blossom and sleeping fire.', ground: '#bd947a', sky: '#e1bcb9', fog: '#d4bfa7', accent: '#e4a34f', type: 'island' },
+  { name: 'The Mountain Temples', subtitle: 'Bell and banner at the edge of paradise.', ground: '#b6b2ba', sky: '#c0c5e1', fog: '#ccbacf', accent: '#dca357', type: 'temple' },
 ];
 export const SPELLS = {
   fire: { name: 'Fireball', glyph: '♨', color: '#ffac6d', description: 'Fireball · explosive splash and lingering burns' },

@@ -28,10 +28,10 @@ export function damageFor(profile, enemy) {
 }
 export function bossPhase(hp, maxHp) { return hp > maxHp * .5 ? 1 : 2; }
 export const BOSS_TYPES = [
-  { kind: 'dragon', name: 'AZRAKH · THE CINDER DRAGON', hp: 30, speed: 57, interval: 1.5, radius: 7, scale: 2.3 },
-  { kind: 'wizard', name: 'SAHIR · THE EXILED VIZIER', hp: 24, speed: 61, interval: 1.25, radius: 5, scale: 2.6 },
-  { kind: 'scarab', name: 'KHEPRI · THE IRON SWARM', hp: 32, speed: 51, interval: 1.65, radius: 7, scale: 3.2, wards: 2 },
-  { kind: 'serpent', name: 'NADIRA · THE SAND WYRM', hp: 28, speed: 55, interval: 1.4, radius: 6, scale: 3 },
+  { kind: 'dragon', name: 'EMBERWRACK · THE CINDER DRAGON', hp: 30, speed: 57, interval: 1.5, radius: 7, scale: 2.3 },
+  { kind: 'wizard', name: 'MALGRAVE · THE HOLLOW WARLOCK', hp: 24, speed: 61, interval: 1.25, radius: 5, scale: 2.6 },
+  { kind: 'scarab', name: 'CARAPAX · THE IRON SWARM', hp: 32, speed: 51, interval: 1.65, radius: 7, scale: 3.2, wards: 2 },
+  { kind: 'serpent', name: 'VORRAX · THE SAND WYRM', hp: 28, speed: 55, interval: 1.4, radius: 6, scale: 3 },
 ];
 export function makeBoss(number, distance) {
   const type = BOSS_TYPES[(number - 1) % BOSS_TYPES.length], hp = type.hp + Math.min(6, Math.floor((number - 1) / 4) * 2);
