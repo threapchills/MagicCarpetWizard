@@ -51,7 +51,9 @@ test('application boots, flies, casts, rolls once per press, pauses, resumes and
     source += '\nexport const arenaSnapshot = () => [...chunks.values()].map(c => ({ id: c.index, visual: c.visual.uuid, scenery: c.visual.userData.scenery.uuid, blend: c.arenaBlend, cleared: c.combatClear }));';
     source += '\nexport const leaveBoss = () => battle.escapeBoss(run, true);';
     source += '\nexport const enterPassage = () => { Object.assign(run, { distance: 800, x: 26, altitude: 15, vx: 0, vy: 0, invulnerable: 0 }); ensureChunks(run.distance, run.seed); };';
-    const { snapshot, enterBoss, raceSnapshot, approachNextGate, arenaSnapshot, leaveBoss, enterPassage } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
+    source += '\nexport const approachMilestone = meters => { run.distance = meters - .1; run.invulnerable = 999; run.altitude = 20; };';
+    source += '\nexport const celebrationSnapshot = () => ({ tier: celebrations.active?.tier, age: celebrations.active?.age, glow: document.body.classList.contains("milestone-glow") });';
+    const { approachMilestone, celebrationSnapshot, snapshot, enterBoss, raceSnapshot, approachNextGate, arenaSnapshot, leaveBoss, enterPassage } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
     advance(.1); assert.equal(snapshot().state, 'menu');
     dispatch('keydown', { code: 'Enter', target: { tagName: 'BUTTON' } }); assert.equal(snapshot().state, 'menu');
     elements.get('start').onclick(); dispatch('keydown', { code: 'KeyW' }); advance(2.1); dispatch('keyup', { code: 'KeyW' });
@@ -124,6 +126,16 @@ test('application boots, flies, casts, rolls once per press, pauses, resumes and
     elements.get('race-new').onclick(); assert.deepEqual(raceSnapshot().records, [undefined, undefined]);
     elements.get('race-back').onclick(); elements.get('start').onclick(); advance(.1);
     assert.equal(raceSnapshot().racing, false); assert.equal(raceSnapshot().gates, 0); assert.equal(snapshot().state, 'playing'); assert.equal(snapshot().hp, 3);
+    for (const [meters, tier] of [[1000, 1], [10000, 2], [50000, 3], [100000, 3]]) {
+      approachMilestone(meters); advance(.1);
+      assert.equal(celebrationSnapshot().tier, tier);
+      assert.equal(celebrationSnapshot().glow, true);
+    }
+    elements.get('pause').onclick(); const celebrationAge = celebrationSnapshot().age;
+    advance(.5); assert.equal(celebrationSnapshot().age, celebrationAge);
+    elements.get('pause-restart').onclick(); advance(.1);
+    assert.equal(celebrationSnapshot().tier, undefined);
+    assert.equal(celebrationSnapshot().glow, false);
   } finally {
     for (const [key, descriptor] of oldGlobals) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else delete globalThis[key]; }
   }

@@ -8,6 +8,8 @@ import { chunkSolids, resolveSolidMovement } from './collision.js';
 import { Soundscape } from './audio.js';
 import { InkRenderer } from './ink.js';
 import { BloodRibbons } from './effects.js';
+import { MilestoneCelebrations } from './celebrations.js';
+import './celebrations.css';
 import { Battle } from './battle.js';
 import { WEAPONS } from './combat.js';
 import { WeatherField, weatherAt } from './weather.js';
@@ -42,6 +44,7 @@ const planet = new THREE.Mesh(new THREE.SphereGeometry(RADIUS, 96, 64), planetMa
 const sky = createSky(scene);
 const carpet = createCarpet(); scene.add(carpet.root, carpet.shadow);
 const blood = new BloodRibbons(scene);
+const celebrations = new MilestoneCelebrations(scene);
 const magic = new MagicField(scene, Math.min(devicePixelRatio, 1.65));
 const chunks = new Map(), bullets = [], particles = [], enemyShots = [];
 const sound = new Soundscape();
@@ -100,6 +103,9 @@ function updateSpellTray() {
   }
 }
 function clearWorld() {
+  celebrations.clear();
+  $('milestone-banner').hidden = true;
+  document.body.classList.remove('milestone-glow', 'milestone-grand');
   arenaVeilTime = 0; $('boss-veil').style.opacity = '0';
   raceView.clear();
   battle.clear(); blood.clear(); magic.clear();
@@ -514,6 +520,14 @@ function frame(now) {
     const nextZone = zoneAt(run.distance); if (!raceAttempt && nextZone !== lastZone) { lastZone = nextZone; if (!battle.boss) banner(lastZone); }
   }
   const distance = state === 'menu' ? menuDistance : run.distance;
+  if (playing && !frozen && !raceAttempt) {
+    const milestone = celebrations.observe(run);
+    if (milestone) $('milestone-banner').textContent = `✦ ${milestone.meters.toLocaleString()} m · ${milestone.tier === 3 ? 'GRAND SKY FESTIVAL!' : milestone.tier === 2 ? 'FESTIVAL OF FLIGHT!' : 'A THOUSAND MORE WONDERS!'} ✦`;
+  }
+  celebrations.update(playing && !frozen ? worldDt : 0, run);
+  document.body.classList.toggle('milestone-glow', !!celebrations.active);
+  document.body.classList.toggle('milestone-grand', celebrations.active?.tier === 3);
+  $('milestone-banner').hidden = !celebrations.active || celebrations.active.age > 5 || !playing;
   ensureChunks(distance, run.seed);
   // Refresh placement after streaming even if this display frame had no simulation step.
   updateEntities(0, distance, false); updateParticles(worldDt, distance); updateCarpet(worldDt, playing); updateTrails(worldDt, distance, playing); updateCamera(frozen ? 0 : dt);

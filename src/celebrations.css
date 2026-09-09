@@ -1,0 +1,5 @@
+.milestone-glow #score,.milestone-glow #distance{color:#fff5ad;text-shadow:0 0 7px #fff4a8,0 0 20px #ffb73f,0 0 38px #ff658c}
+.milestone-grand #score,.milestone-grand #distance{color:#fffbe1;text-shadow:0 0 9px #fff,0 0 25px #ffcc55,0 0 48px #ff658c}
+#milestone-banner{position:fixed;top:94px;left:50%;transform:translateX(-50%);z-index:6;max-width:90vw;width:max-content;padding:10px 22px;border:1px solid #ffdd8d99;border-radius:24px;background:linear-gradient(100deg,#382541e8,#234852ed);box-shadow:0 0 28px #ffbf4f33;color:#fff0b4;text-shadow:0 0 12px #ffc44d;font-size:12px;font-weight:600;letter-spacing:2px;text-align:center;pointer-events:none}
+.milestone-grand #milestone-banner{border-color:#ffe3a2;box-shadow:0 0 32px #ffbd6a88;background:linear-gradient(100deg,#683962ed,#284d63ed);font-size:14px}
+@media(max-width:800px){#milestone-banner{top:auto;bottom:220px;font-size:10px;letter-spacing:1px;padding:10px 14px}.milestone-grand #milestone-banner{font-size:11px}}
