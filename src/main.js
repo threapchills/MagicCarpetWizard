@@ -10,6 +10,7 @@ import { InkRenderer } from './ink.js';
 import { BloodRibbons } from './effects.js';
 import { MilestoneCelebrations } from './celebrations.js';
 import { updateSky } from './sky.js';
+import { gradeAt } from './grade.js';
 import './celebrations.css';
 import { Battle } from './battle.js';
 import { WEAPONS } from './combat.js';
@@ -388,7 +389,9 @@ function updateAtmosphere(dt, distance) {
   const cameraDistance = distance - RADIUS * Math.atan2(camera.position.z, RADIUS + camera.position.y);
   const cameraPassage = activePassage(cameraDistance);
   const cameraEnclosed = !!cameraPassage && Math.abs(camera.position.x) < cameraPassage.halfWidth && camera.position.y - elevationAt(cameraDistance) < cameraPassage.ceiling;
-  updateSky(sky, dt, { camera, night, daylight, wind, enclosed: cameraEnclosed });
+  const look = gradeAt(z.type, { daylight, night, enclosed: cameraEnclosed, rain: raining, sand, slow: run.slow });
+  ink.setLook(look, dt, globalTime);
+  updateSky(sky, dt, { camera, night, daylight, wind, enclosed: cameraEnclosed, aura: look.aura, time: globalTime });
   if (weatherField.update(globalTime, distance, state === 'menu' ? 0 : run.x, state === 'menu' ? 8 : run.altitude, z.type, conditions)) sound.thunder();
   weatherField.leaves.visible = weatherField.rain.visible = weatherField.sand.visible = !enclosed;
   weatherField.gusts.visible = !enclosed;

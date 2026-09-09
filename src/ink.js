@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { createGradeUniforms, gradeShader, updateGrade } from './grade.js';
 
 // Two quarter-resolution glow passes precede the ink composite. The scene is
 // drawn only once; black outlines are applied after glow to retain contrast.
@@ -13,6 +14,7 @@ export class InkRenderer {
     this.target.depthTexture = new THREE.DepthTexture(1, 1, THREE.UnsignedIntType);
     this.scene = new THREE.Scene(); this.screenCamera = new THREE.Camera();
     this.uniforms = {
+      ...createGradeUniforms(),
       picture: { value: this.target.texture }, depth: { value: this.target.depthTexture },
       glow: { value: this.glowB.texture },
       hdr: { value: this.hdr },
@@ -58,6 +60,7 @@ export class InkRenderer {
         uniform vec2 pixel;
         uniform float nearPlane;
         uniform float farPlane;
+        ${gradeShader}
         float distanceAt(vec2 uv){return -perspectiveDepthToViewZ(texture2D(depth,uv).x,nearPlane,farPlane);}
         void edgePair(vec2 offset, float z, vec3 color, inout float depthEdge, inout float colorEdge, inout float nearest){
           float a=distanceAt(vUv+offset), b=distanceAt(vUv-offset);
@@ -87,7 +90,8 @@ export class InkRenderer {
           // Preserve luminous cores inside narrow spells and runes. Neighboring
           // background pixels still carry their black silhouette contour.
           if(hdr) edge*=1.-.82*smoothstep(1.8,3.,max(color.r,max(color.g,color.b)));
-          color+=texture2D(glow,vUv).rgb*.32;
+          color+=texture2D(glow,vUv).rgb*gradeEffects.y;
+          color=cinematicGrade(color,z);
           color=mix(color,vec3(.001),edge);
           gl_FragColor=vec4(max(color,vec3(0.)),1.);
           #include <colorspace_fragment>
@@ -101,6 +105,10 @@ export class InkRenderer {
     this.target.setSize(size.x, size.y); this.uniforms.pixel.value.set(width / size.x, width / size.y);
     this.glowA.setSize(Math.max(1, Math.ceil(size.x / 4)), Math.max(1, Math.ceil(size.y / 4)));
     this.glowB.setSize(this.glowA.width, this.glowA.height);
+  }
+  setLook(look, dt, time) {
+    updateGrade(this.uniforms, look, dt, time, !this.lookInitialized);
+    this.lookInitialized = true;
   }
   render(scene, camera) {
     this.renderer.setRenderTarget(this.target); this.renderer.render(scene, camera);

@@ -28,14 +28,21 @@ function moonDisc(parent, x, y, z, radius, color) {
 
 export function createSky(scene) {
   const root = new THREE.Group(); root.name = 'Distant sky'; scene.add(root);
-  const uniforms = { top: { value: new THREE.Color('#72aaa9') }, bottom: { value: new THREE.Color('#efe1b6') }, night: { value: 0 } };
+  const uniforms = { top: { value: new THREE.Color('#72aaa9') }, bottom: { value: new THREE.Color('#efe1b6') }, night: { value: 0 }, aura: { value: 0 }, time: { value: 0 } };
   const material = new THREE.ShaderMaterial({ uniforms, side: THREE.BackSide, depthWrite: false,
     vertexShader: 'varying vec3 vPos; void main(){vPos=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
-    fragmentShader: `varying vec3 vPos; uniform vec3 top; uniform vec3 bottom; uniform float night;
+    fragmentShader: `varying vec3 vPos; uniform vec3 top; uniform vec3 bottom; uniform float night; uniform float aura; uniform float time;
       void main(){vec3 p=normalize(vPos); float h=p.y;
         vec3 color=mix(bottom,top,smoothstep(-.12,.68,h));
         float ribbon=pow(max(0.,1.-abs(p.y-.24-p.x*.19)*5.),3.);
         color+=vec3(.09,.10,.20)*ribbon*night;
+        if(aura>.001){
+          float wave=.30+sin(p.x*5.+time*.06+p.z*2.)*.10;
+          float curtain=pow(max(0.,1.-abs(p.y-wave)*7.),3.);
+          float folds=.6+.4*sin(p.x*29.+p.z*11.+time*.10);
+          vec3 silk=mix(vec3(.06,.25,.20),vec3(.24,.09,.29),.5+.5*sin(p.x*4.+time*.025));
+          color+=silk*curtain*folds*aura;
+        }
         gl_FragColor=vec4(color,1.);}` });
   const dome = new THREE.Mesh(new THREE.SphereGeometry(1000, 32, 20), material); dome.renderOrder = -100; root.add(dome);
   const sun = new THREE.Mesh(new THREE.SphereGeometry(32, 32, 20), new THREE.MeshBasicMaterial({ color: '#ffe5ac', fog: false }));
@@ -78,12 +85,14 @@ export function createSky(scene) {
   return { root, uniforms, sun, moons, stars, starOutlines, clouds, cloudMaterials };
 }
 
-export function updateSky(sky, dt, { camera, night, daylight, wind, enclosed }) {
+export function updateSky(sky, dt, { camera, night, daylight, wind, enclosed, aura = 0, time = 0 }) {
   // Every sky object stays well beyond streamed scenery. No small foreground
   // lanterns or camera-relative cloud puffs can intrude into a cave.
   sky.root.position.copy(camera.position);
   sky.root.visible = !enclosed;
   sky.uniforms.night.value = night;
+  sky.uniforms.aura.value = THREE.MathUtils.lerp(sky.uniforms.aura.value, aura, 1 - Math.exp(-Math.max(0, dt) * .65));
+  sky.uniforms.time.value = time;
   sky.sun.visible = night < .7; sky.sun.position.y = 90 + daylight * 235;
   sky.moons.visible = night > .2;
   sky.stars.visible = sky.starOutlines.visible = night > .35;
