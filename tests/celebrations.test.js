@@ -2,6 +2,22 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { milestoneBetween, MilestoneCelebrations } from '../src/celebrations.js';
+import { placeOnTerrain } from '../src/world.js';
+
+test('festival scenery stays anchored as the player advances and changes speed', () => {
+  const effects = new MilestoneCelebrations(new THREE.Scene());
+  const run = { distance: 10000, x: 0, altitude: 8, speed: 60 };
+  effects.observe(run); effects.update(1, run);
+  const positions = effects.parts.map(p => p.s), p = effects.parts[0];
+  const matrix = new THREE.Matrix4(), expected = new THREE.Object3D();
+  for (const [distance, speed] of [[10030, 60], [10120, 100], [10400, 30]]) {
+    Object.assign(run, { distance, speed }); effects.update(.1, run);
+    assert.deepEqual(effects.parts.map(p => p.s), positions);
+    effects.decor.getMatrixAt(0, matrix);
+    placeOnTerrain(expected, p.x, p.s, p.y, distance);
+    assert.ok(new THREE.Vector3().setFromMatrixPosition(matrix).distanceTo(expected.position) < .0001);
+  }
+});
 
 test('milestones cross exactly once and select the highest tier', () => {
   assert.equal(milestoneBetween(0, 999.99), null);

@@ -44,7 +44,7 @@ export class MilestoneCelebrations {
     const duration = [0, 3.5, 10, 16][milestone.tier];
     this.active = { ...milestone, age: 0, duration, nextBurst: 0 };
     this.particles = []; this.parts = [];
-    const add = (x, y, s, w, h, d, color, motion = '') => this.parts.push({ x, y, s, w, h, d, color, motion });
+    const add = (x, y, s, w, h, d, color, motion = '') => this.parts.push({ x, y, s: run.distance + s, w, h, d, color, motion });
     if (milestone.tier > 1) {
       const rows = milestone.tier === 3 ? 12 : 6;
       for (let row = 0; row < rows; row++) for (const side of [-1, 1]) {
@@ -109,8 +109,9 @@ export class MilestoneCelebrations {
     });
     const fade = Math.min(1, a.age * 3, (a.duration - a.age) * 1.5);
     this.parts.forEach((p, i) => {
-      // The festival streams past the carpet, recycling into the distance.
-      const s = run.distance + ((p.s - a.age * run.speed * .6) % 280 + 280) % 280 - 15;
+      // Fixed world coordinates, just like terrain and buildings. Only the
+      // revellers and flags animate; the player flies past the festival.
+      const s = p.s;
       const dance = p.motion === 'dance' || p.motion === 'wave' ? Math.sin(a.age * 7 + p.s) * .25 : 0;
       const rotation = p.motion === 'wave' ? Math.sin(a.age * 8 + p.x) * .55 : p.motion === 'flag' ? Math.sin(a.age * 5 + p.x) * .18 : 0;
       this.instance(this.decor, i, p.x, p.y + dance, s, run.distance, p.w * fade, p.h * fade, p.d * fade, p.color, rotation);
