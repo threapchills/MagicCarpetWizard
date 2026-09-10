@@ -12,7 +12,7 @@ function harness() {
   run.altitude = 10; run.speed = 60;
   const camera = new THREE.PerspectiveCamera(60, 1.6, .2, 1100); camera.position.set(0, 13, 22); camera.lookAt(0, 10, -80); camera.updateMatrixWorld();
   const calls = { arena: [], hits: 0, hurt: 0 };
-  const sound = Object.fromEntries(['spell', 'impact', 'kill', 'roar', 'trick'].map(k => [k, () => {}]));
+  const sound = Object.fromEntries(['spell', 'impact', 'kill', 'roar', 'trick', 'victory'].map(k => [k, () => {}]));
   const battle = new Battle(scene, chunks, bullets, shots, { sound, blood: { burst() {} }, particles() {}, notify() {}, tray() {}, bossUI() {},
     hurt() { calls.hurt++; }, hit() { calls.hits++; }, arena(active) { calls.arena.push(active); } });
   function enemy(x = 0, s = 70, hp = 20) {
@@ -93,20 +93,40 @@ test('a moving boss can be defeated through real aimed casts at different simula
   }
 });
 
-test('bosses have independent speed, lower HP, frequent attacks and a genuine outrun exit', () => {
-  const slow = createRun(), fast = createRun(); slow.distance = fast.distance = 1400;
-  const a = makeBoss(1, 1400), b = makeBoss(1, 1400);
-  for (let i = 0; i < 180; i++) { slow.distance += 40 / 90; fast.distance += 102 / 90; moveBoss(a, slow, 1 / 90); moveBoss(b, fast, 1 / 90); }
-  assert.equal(a.s, b.s); assert.ok(a.s - slow.distance > b.s - fast.distance);
-  assert.equal(new Set([1, 2, 3, 4].map(n => makeBoss(n, 0).kind)).size, 4);
-  for (const n of [1, 2, 3, 4, 20]) assert.ok(makeBoss(n, 0).hp <= 38);
-  const h = harness(); h.run.distance = 1400; h.run.speed = 102; h.battle.startBoss(h.run);
-  let attacks = 0;
-  for (let i = 0; i < 90 * 8 && h.battle.boss; i++) { h.run.distance += 102 / 90; h.battle.updateBoss(1 / 90, h.run); attacks = Math.max(attacks, h.battle.boss?.attack || 0); }
-  // The entrance veil delays the first volley; a full-speed escape can beat the second.
-  assert.equal(h.battle.boss, null); assert.ok(attacks >= 1); assert.equal(h.run.bosses, 0); assert.equal(h.shots.length, 0); assert.deepEqual(h.calls.arena, [true, false]);
-  const score = h.run.score; h.battle.updateBoss(.1, h.run); assert.equal(h.run.score, score);
+test('bosses pursue cruising riders, recover from behind, and get tougher later', () => {
+  for (const hz of [30, 90, 144]) for (const number of [1, 2, 3, 4]) {
+    for (const [distance, speed] of [[2600, 70], [18000, 115], [80000, 138]]) {
+      const run = createRun(); Object.assign(run, { distance, speed, altitude: 20, x: 25 });
+      const boss = makeBoss(number, distance); boss.s = distance - 35; boss.speed = 60;
+      for (let i = 0; i < hz * 12; i++) {
+        run.distance += speed / hz; moveBoss(boss, run, 1 / hz);
+        assert.ok(boss.s - run.distance > -85, 'pursuit never falls out of the arena');
+        assert.ok(boss.speed <= boss.maxSpeed + .001, 'finite speed cap');
+      }
+      assert.ok(boss.s - run.distance > 15 && boss.s - run.distance < 100, 'catches up into casting range');
+    }
+    const early = makeBoss(number, 2600), late = makeBoss(number, 80000);
+    assert.ok(late.hp > early.hp * 1.4 && late.hp < early.hp * 1.7);
+    assert.ok(late.maxSpeed > early.maxSpeed * 1.7);
+  }
+  const h = harness(); h.run.distance = 18000; h.run.speed = 115; h.battle.startBoss(h.run);
+  for (let i = 0; i < 90 * 36; i++) { h.run.distance += h.run.speed / 90; h.battle.updateBoss(1 / 90, h.run); }
+  assert.ok(h.battle.boss, 'later hunters no longer break off automatically after 35 seconds');
+  assert.ok(h.battle.boss.attack > 12); h.battle.clear();
 });
+
+test('a sustained early overdrive can still escape, while freezing opens a pursuit gap', () => {
+  const h = harness(); h.run.distance = 2600; h.run.speed = 120; h.battle.startBoss(h.run);
+  for (let i = 0; i < 90 * 20 && h.battle.boss; i++) { h.run.distance += h.run.speed / 90; h.battle.updateBoss(1 / 90, h.run); }
+  assert.equal(h.battle.boss, null); assert.equal(h.run.bosses, 0);
+  assert.equal(h.shots.length, 0); assert.deepEqual(h.calls.arena, [true, false]);
+  const score = h.run.score; h.battle.updateBoss(.1, h.run); assert.equal(h.run.score, score);
+  const run = createRun(); Object.assign(run, { distance: 40000, speed: 125 });
+  const normal = makeBoss(3, run.distance), frozen = makeBoss(3, run.distance); frozen.frozen = 2;
+  for (let i = 0; i < 180; i++) { run.distance += run.speed / 90; moveBoss(normal, run, 1 / 90); moveBoss(frozen, run, 1 / 90); }
+  assert.ok(normal.s > frozen.s + 15); h.battle.clear();
+});
+
 test('biomes spawn distinct hordes, towers, mages, dragons and river-only fish deterministically', () => {
   const seen = new Set();
   for (const type of ['city', 'palace', 'desert', 'canyon', 'river', 'farm', 'ancient']) for (let seed = 0; seed < 35; seed++) {

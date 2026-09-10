@@ -2,7 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRun, updateRun, flightSpeed, generateChunk, ZONES, zoneAt, ZONE_LENGTH, collectSpell, award, damage, intersectsObstacle, nearObstacle, spellDamage, safeLaneAt, segmentHitsSphere, FLIGHT_HALF_WIDTH, MAX_ALTITUDE, LANE_SPACING, obstacleExtents } from '../src/game.js';
 test('low flight is faster; skyfire preserves speed at altitude', () => { assert.ok(flightSpeed(1, false) > flightSpeed(20, false) * 1.5); assert.equal(flightSpeed(1, true), flightSpeed(29, true)); });
-test('all seven zones cycle and generation is seeded', () => { for (let i = 0; i < 14; i++) assert.equal(zoneAt(i * ZONE_LENGTH), i % ZONES.length); assert.deepEqual(generateChunk(9, 12), generateChunk(9, 12)); assert.notDeepEqual(generateChunk(9, 12), generateChunk(9, 13)); });
+test('zones last 2560 metres, cycle correctly and keep seeded generation', () => {
+  assert.equal(ZONE_LENGTH, 2560);
+  for (let i = 0; i < ZONES.length * 2; i++) {
+    assert.equal(zoneAt(i * ZONE_LENGTH), i % ZONES.length);
+    assert.equal(zoneAt((i + 1) * ZONE_LENGTH - .01), i % ZONES.length);
+  }
+  assert.deepEqual(generateChunk(9, 12), generateChunk(9, 12)); assert.notDeepEqual(generateChunk(9, 12), generateChunk(9, 13));
+});
 test('1000 procedural rows preserve a safe lane including rotated building corners', () => { for (let i = 0; i < 1000; i++) { const row = generateChunk(i, 917); for (const obstacle of row.obstacles) assert.ok(Math.abs(obstacle.x - row.safeLane * LANE_SPACING) > obstacleExtents(obstacle).x + 2); } });
 test('boost drains, stops empty, and needs 25 power to restart', () => { const run = createRun(); run.altitude = 25; for (let i = 0; i < 100; i++) updateRun(run, { steer: 0, lift: 0, boost: true }, .05); assert.equal(run.boost, false); assert.ok(run.power < 25); });
 test('tricks require clearance, award only on completion, and have a cooldown', () => { const run = createRun(); run.altitude = 2; updateRun(run, { steer: 0, lift: 0, roll: true }, .01); assert.equal(run.roll, 0); updateRun(run, { steer: 0, lift: 0, roll: false }, .01); run.altitude = 10; updateRun(run, { steer: 1, lift: 0, roll: true }, .01); assert.ok(run.roll > 0); assert.equal(run.tricks, 0); for (let i = 0; i < 18; i++) updateRun(run, { steer: 0, lift: 0 }, .05); assert.equal(run.tricks, 1); assert.ok(run.rollCooldown > 0); });

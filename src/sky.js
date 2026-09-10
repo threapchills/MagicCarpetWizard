@@ -89,7 +89,9 @@ export function updateSky(sky, dt, { camera, night, daylight, wind, enclosed, au
   // Every sky object stays well beyond streamed scenery. No small foreground
   // lanterns or camera-relative cloud puffs can intrude into a cave.
   sky.root.position.copy(camera.position);
-  sky.root.visible = !enclosed;
+  // Tunnel walls/roofs occlude the distant sky through the depth buffer.
+  // Keep it lit behind them so the exit is visible before the camera emerges.
+  sky.root.visible = true;
   sky.uniforms.night.value = night;
   sky.uniforms.aura.value = THREE.MathUtils.lerp(sky.uniforms.aura.value, aura, 1 - Math.exp(-Math.max(0, dt) * .65));
   sky.uniforms.time.value = time;

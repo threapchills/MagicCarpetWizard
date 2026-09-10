@@ -4,7 +4,7 @@ import { balanceAt } from './pacing.js';
 import { gainFocus } from './focus.js';
 export const RADIUS = 680;
 export const CHUNK = 64;
-export const ZONE_LENGTH = CHUNK * 20;
+export const ZONE_LENGTH = CHUNK * 40;
 export const FLIGHT_HALF_WIDTH = 54;
 export const MAX_ALTITUDE = 54;
 export const LANE_SPACING = 22;

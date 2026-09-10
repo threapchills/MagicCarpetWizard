@@ -1,13 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { generateChunk, RADIUS } from '../src/game.js';
+import { generateChunk, RADIUS, ZONE_LENGTH, CHUNK } from '../src/game.js';
 import { createChunkVisual, createCarpet, createEnemy, createPickup, createRing, placeOnWorld, disposeChunk } from '../src/world.js';
 import { BloodRibbons } from '../src/effects.js';
 
 test('every zone creates finite merged geometry without mutating collision shapes', () => {
   for (let zone = 0; zone < 7; zone++) {
-    const index = zone * 20 + (3 - zone * 20 % 6 + 6) % 6;
+    const start = zone * ZONE_LENGTH / CHUNK;
+    const index = start + (3 - start % 6 + 6) % 6;
     const chunk = generateChunk(index, 671), expected = structuredClone(chunk.obstacles), visual = createChunkVisual(chunk, 671);
     assert.deepEqual(chunk.obstacles, expected);
     assert.ok(visual.children.length > 0 && visual.children.length <= 4);

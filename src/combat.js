@@ -1,4 +1,5 @@
 import { clamp } from './game.js';
+import { balanceAt } from './pacing.js';
 
 export const WEAPONS = ['fire', 'storm', 'wind'];
 export const BOOSTS = { rapid: 10, fury: 10, focus: 12, overdrive: 8 };
@@ -34,19 +35,28 @@ export const BOSS_TYPES = [
   { kind: 'serpent', name: 'VORRAX · THE SAND WYRM', hp: 28, speed: 55, interval: 1.4, radius: 6, scale: 3 },
 ];
 export function makeBoss(number, distance) {
-  const type = BOSS_TYPES[(number - 1) % BOSS_TYPES.length], hp = type.hp + Math.min(6, Math.floor((number - 1) / 4) * 2);
+  const type = BOSS_TYPES[(number - 1) % BOSS_TYPES.length], { strength, mastery } = balanceAt(distance);
+  const hp = Math.round(type.hp * (1.08 + .48 * strength + .16 * mastery));
   return { ...type, boss: true, number, x: 0, y: 22, s: distance + 105, hp, maxHp: hp, active: true, phase: 1,
+    pursuit: strength, maxSpeed: 92 + 78 * strength + 20 * mastery, maxDuration: 50 + 30 * strength,
     age: 0, cooldown: 1.1, attack: 0, frozen: 0, burn: 0, stagger: 0, sigils: [], shield: !!type.wards };
 }
 export function moveBoss(b, run, dt) {
   b.age += dt;
   const cycle = b.age % 5, charge = cycle > 3.9, rate = b.frozen ? .75 : 1;
-  // World speed is independent of the rider: boosts can pass it, while high flight loses ground.
-  b.speed = (BOSS_TYPES[(b.number - 1) % BOSS_TYPES.length].speed + (charge ? 25 : -5)) * rate;
+  // Close on the rider in world space, with finite acceleration and a speed cap.
+  // Early boosts can still escape; experienced riders must fight the pursuit.
+  const pressure = b.pursuit, gap = b.s - run.distance;
+  const targetGap = (charge ? 44 : 78) - pressure * 22;
+  const desired = clamp(run.speed + (targetGap - gap) * (1.1 + pressure), 12, b.maxSpeed) * rate;
+  const acceleration = (80 + 90 * pressure) * dt;
+  b.speed += clamp(desired - b.speed, -acceleration, acceleration);
   b.s += b.speed * dt;
-  const x = b.kind === 'wizard' ? Math.sin(b.age * 1.9) * 36 : b.kind === 'serpent' ? Math.sin(b.age * .85) * 38 : clamp(run.x * .6 + Math.sin(b.age * .9) * 20, -42, 42);
+  const weave = b.kind === 'wizard' ? Math.sin(b.age * 1.9) * 28 : b.kind === 'serpent' ? Math.sin(b.age * .85) * 30 : Math.sin(b.age * .9) * 20;
+  const x = clamp(run.x * (.6 + pressure * .35) + weave * (1 - pressure * .5), -52, 52);
   const y = b.kind === 'serpent' ? 6 + Math.abs(Math.sin(b.age * .8)) * 27 : b.kind === 'scarab' ? 14 + Math.sin(b.age) * 7 : clamp(run.altitude + 7 + Math.sin(b.age * 1.4) * 10, 9, 43);
-  b.x += clamp(x - b.x, -22 * dt * rate, 22 * dt * rate); b.y += clamp(y - b.y, -15 * dt * rate, 15 * dt * rate);
+  const lateral = (22 + pressure * 20) * dt * rate;
+  b.x += clamp(x - b.x, -lateral, lateral); b.y += clamp(y - b.y, -15 * dt * rate, 15 * dt * rate);
   b.charging = charge;
 }
 export function attackTargets(enemy, run, fan = false) {

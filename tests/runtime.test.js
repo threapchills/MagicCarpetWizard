@@ -53,7 +53,8 @@ test('application boots, flies, casts, rolls once per press, pauses, resumes and
     source += '\nexport const enterPassage = () => { Object.assign(run, { distance: 800, x: 26, altitude: 15, vx: 0, vy: 0, invulnerable: 0 }); ensureChunks(run.distance, run.seed); };';
     source += '\nexport const approachMilestone = meters => { run.distance = meters - .1; run.invulnerable = 999; run.altitude = 20; };';
     source += '\nexport const celebrationSnapshot = () => ({ tier: celebrations.active?.tier, age: celebrations.active?.age, glow: document.body.classList.contains("milestone-glow") });';
-    const { approachMilestone, celebrationSnapshot, snapshot, enterBoss, raceSnapshot, approachNextGate, arenaSnapshot, leaveBoss, enterPassage } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
+    source += '\nexport const audioEvents = []; sound.milestone = tier => audioEvents.push(tier); sound.victory = () => audioEvents.push("victory");';
+    const { audioEvents, approachMilestone, celebrationSnapshot, snapshot, enterBoss, raceSnapshot, approachNextGate, arenaSnapshot, leaveBoss, enterPassage } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
     advance(.1); assert.equal(snapshot().state, 'menu');
     dispatch('keydown', { code: 'Enter', target: { tagName: 'BUTTON' } }); assert.equal(snapshot().state, 'menu');
     elements.get('start').onclick(); dispatch('keydown', { code: 'KeyW' }); advance(2.1); dispatch('keyup', { code: 'KeyW' });
@@ -113,7 +114,7 @@ test('application boots, flies, casts, rolls once per press, pauses, resumes and
     assert.equal(raceSnapshot().state, 'race-ended'); assert.equal(elements.get('race-results').hidden, false); assert.ok(raceSnapshot().records[0] > 0); assert.equal(snapshot().boss, false);
     elements.get('race-next').onclick(); assert.equal(raceSnapshot().player, 1); assert.equal(raceSnapshot().seed, seed); assert.equal(raceSnapshot().ghost, true);
     advance(3.2); for (let i = 0; i < 8; i++) { approachNextGate(); advance(.03); }
-    assert.equal(raceSnapshot().state, 'race-ended'); assert.ok(raceSnapshot().records[1] > 0);
+    assert.equal(raceSnapshot().state, 'race-ended'); assert.ok(raceSnapshot().records[1] > 0); assert.equal(audioEvents.filter(e => e === 'victory').length, 2);
     elements.get('race-next').onclick(); assert.equal(raceSnapshot().player, 0); assert.equal(raceSnapshot().ghost, true);
     advance(3.1); const savedTimes = raceSnapshot().records;
     dispatch('keydown', { code: 'KeyR' });
@@ -128,7 +129,7 @@ test('application boots, flies, casts, rolls once per press, pauses, resumes and
     assert.equal(raceSnapshot().racing, false); assert.equal(raceSnapshot().gates, 0); assert.equal(snapshot().state, 'playing'); assert.equal(snapshot().hp, 3);
     for (const [meters, tier] of [[1000, 1], [10000, 2], [50000, 3], [100000, 3]]) {
       approachMilestone(meters); advance(.1);
-      assert.equal(celebrationSnapshot().tier, tier);
+      assert.equal(celebrationSnapshot().tier, tier); assert.equal(audioEvents.at(-1), tier);
       assert.equal(celebrationSnapshot().glow, true);
     }
     elements.get('pause').onclick(); const celebrationAge = celebrationSnapshot().age;

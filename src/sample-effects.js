@@ -1,4 +1,4 @@
-export const EFFECT_ASSETS = ['shoot', 'hit', 'death', 'fall', 'land', 'munch', 'jump', 'portal'];
+export const EFFECT_ASSETS = ['shoot', 'hit', 'death', 'fall', 'land', 'munch', 'jump', 'portal', 'collect-chime', 'milestone', 'victory', 'festival', 'grand-festival'];
 
 // All effects are excerpts from the user's recordings. Each cue has a short
 // retrigger limit, and the shared voice pool stays bounded during large volleys.
@@ -9,7 +9,11 @@ export const CUES = {
   fireImpact: { asset: 'land', gain: 1.2, rate: .78, gap: .10 },
   stormImpact: { asset: 'hit', gain: 1.05, rate: 1.3, gap: .12 },
   windImpact: { asset: 'land', gain: .95, rate: 1.4, gap: .15 },
-  collect: { asset: 'portal', gain: .50, rate: 1.5, length: .35, gap: .13 },
+  collect: { asset: 'collect-chime', gain: .58, rate: 1, tuned: true, length: .23, gap: .11 },
+  milestone: { asset: 'milestone', gain: .85, rate: 1, tuned: true, music: 1, length: 2, gap: 1.5 },
+  victory: { asset: 'victory', gain: .95, rate: 1, tuned: true, music: 2, length: 2.8, gap: 2 },
+  festival: { asset: 'festival', gain: .9, rate: 1, tuned: true, music: 3, length: 4.5, gap: 4 },
+  grandFestival: { asset: 'grand-festival', gain: 1, rate: 1, tuned: true, music: 4, length: 6.8, gap: 6 },
   trick: { asset: 'jump', gain: 1, rate: 1.15, gap: .35 },
   hit: { asset: 'hit', gain: 1.25, rate: .86, gap: .18 },
   kill: { asset: 'munch', gain: 1.3, rate: .85, gap: .12 },
@@ -19,8 +23,8 @@ export const CUES = {
 };
 
 export class SampleEffects {
-  constructor(ctx, output, { baseUrl, fetcher = url => globalThis.fetch(url) } = {}) {
-    Object.assign(this, { ctx, output, baseUrl, fetcher });
+  constructor(ctx, output, { baseUrl, fetcher = url => globalThis.fetch(url), onMusicChange = () => {} } = {}) {
+    Object.assign(this, { ctx, output, baseUrl, fetcher, onMusicChange });
     this.buffers = new Map(); this.pending = new Map(); this.failed = new Map(); this.lastCue = new Map(); this.voices = new Set(); this.enabled = true; this.epoch = 0;
   }
   async load(asset) {
@@ -52,16 +56,27 @@ export class SampleEffects {
     this.lastCue.set(cueName, now); const epoch = this.epoch;
     const buffer = this.buffers.get(cue.asset) || await this.load(cue.asset);
     if (!buffer || !this.enabled || epoch !== this.epoch || this.ctx.currentTime - now > .2) return;
-    if (this.voices.size >= 16) { const oldest = this.voices.values().next().value; oldest.source.stop(); oldest.cleanup(); }
+    if (cue.music) {
+      const music = [...this.voices].filter(v => v.music);
+      if (music.some(v => v.music >= cue.music)) return;
+      for (const voice of music) { voice.source.stop(); voice.cleanup(); }
+    }
+    // Spell volleys cannot steal a fanfare's voice. Only one arrangement plays.
+    if (this.voices.size >= 16) {
+      const oldest = [...this.voices].find(v => !v.music);
+      if (!oldest) return;
+      oldest.source.stop(); oldest.cleanup();
+    }
     const source = this.ctx.createBufferSource(), envelope = this.ctx.createGain(), pan = this.ctx.createStereoPanner();
-    source.buffer = buffer; const rate = cue.rate * (.97 + Math.random() * .06); source.playbackRate.value = rate;
+    source.buffer = buffer; const rate = cue.rate * (cue.tuned ? 1 : .97 + Math.random() * .06); source.playbackRate.value = rate;
     const t = this.ctx.currentTime, duration = Math.min(cue.length || 4, buffer.duration / rate);
     envelope.gain.setValueAtTime(0, t); envelope.gain.linearRampToValueAtTime(cue.gain, t + .004);
     envelope.gain.setValueAtTime(cue.gain, t + Math.max(.005, duration - .03)); envelope.gain.linearRampToValueAtTime(0, t + duration);
-    pan.pan.value = (Math.random() - .5) * .16;
+    pan.pan.value = cue.music ? 0 : (Math.random() - .5) * .16;
     source.connect(envelope).connect(pan).connect(this.output);
     let cleaned = false;
-    const voice = { source, cleanup: () => { if (cleaned) return; cleaned = true; this.voices.delete(voice); source.disconnect(); envelope.disconnect(); pan.disconnect(); } };
+    const voice = { source, music: cue.music || 0, cleanup: () => { if (cleaned) return; cleaned = true; this.voices.delete(voice); source.disconnect(); envelope.disconnect(); pan.disconnect(); if (cue.music) this.onMusicChange(); } };
     this.voices.add(voice); source.onended = voice.cleanup; source.start(t); source.stop(t + duration + .01);
+    if (cue.music) this.onMusicChange();
   }
 }

@@ -102,3 +102,37 @@ test('failed audio fetches are visible and all shipped effects are recordings, w
   assert.ok(!/createOscillator|createBuffer\(/.test(source + effects));
   assert.ok(!/music\.ogg/.test(source + effects));
 });
+
+test('milestone arrangements preserve tuning, duck ambience and survive spell volleys', async () => {
+  const h = setup(); await h.sound.start(); await flush();
+  const bank = h.sound.effects;
+  for (const [tier, asset] of [[1, 'milestone'], [2, 'festival'], [3, 'grand-festival']]) {
+    h.sound.milestone(tier); await flush();
+    const music = [...bank.voices].filter(v => v.music);
+    assert.equal(music.length, 1); assert.equal(music[0].source.buffer, bank.buffers.get(asset));
+    assert.equal(music[0].source.playbackRate.value, 1);
+    assert.equal(h.sound.ambienceBus.gain.value, .85 * .65);
+  }
+  const grand = [...bank.voices].find(v => v.music);
+  h.sound.victory(); await flush(); assert.ok(bank.voices.has(grand), 'lesser fanfares cannot interrupt grand festival');
+  for (let i = 0; i < 40; i++) { h.ctx.currentTime += .1; await bank.play('fire'); }
+  assert.ok(bank.voices.has(grand)); assert.equal(bank.voices.size, 16);
+  grand.source.onended(); assert.equal(h.sound.ambienceBus.gain.value, .85);
+  h.sound.clearEffects(); h.sound.victory(); await flush();
+  assert.equal([...bank.voices][0].source.buffer, bank.buffers.get('victory'));
+  h.sound.clearEffects(); assert.equal(bank.voices.size, 0); assert.equal(h.sound.ambienceBus.gain.value, .85);
+});
+
+test('pause, mute and retry cancel fanfares, including pending downloads', async () => {
+  const h = setup(); await h.sound.start(); await flush();
+  h.sound.milestone(3); await flush(); h.sound.setPaused(true);
+  assert.equal(h.sound.effects.voices.size, 0);
+  h.sound.setPaused(false); assert.equal(h.sound.ambienceBus.gain.value, .85);
+  h.sound.milestone(2); await flush(); await h.sound.toggle();
+  assert.equal(h.sound.effects.voices.size, 0);
+  let deliver;
+  const bank = new SampleEffects(h.ctx, {}, { baseUrl: 'https://example.invalid/', fetcher: () => new Promise(resolve => deliver = resolve) });
+  const pending = bank.play('festival'); bank.stop();
+  deliver({ ok: true, arrayBuffer: async () => new ArrayBuffer(16) }); await pending;
+  assert.equal(bank.voices.size, 0);
+});

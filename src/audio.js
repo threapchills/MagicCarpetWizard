@@ -30,7 +30,7 @@ export class Soundscape {
         this.ambienceBus.connect(this.master); this.effectBus.connect(this.master); this.master.connect(limiter); limiter.connect(this.ctx.destination);
         const base = this.baseUrl || new URL('./audio/', document.baseURI).href;
         this.ambient = new AmbientEngine(this.ctx, this.ambienceBus, { baseUrl: new URL('slumbr/', base).href, fetcher: this.fetcher });
-        this.effects = new SampleEffects(this.ctx, this.effectBus, { baseUrl: new URL('effects/', base).href, fetcher: this.fetcher });
+        this.effects = new SampleEffects(this.ctx, this.effectBus, { baseUrl: new URL('effects/', base).href, fetcher: this.fetcher, onMusicChange: () => this.applyMix() });
       }
       // Called directly from Take Flight / M, before awaiting any fetch, so the
       // browser receives the user's audio-unlock gesture synchronously.
@@ -57,7 +57,8 @@ export class Soundscape {
   }
   applyMix() {
     if (!this.ctx) return;
-    this.ambienceBus.gain.setTargetAtTime(this.paused && !this.keepAmbience ? 0 : this.ambienceVolume, this.ctx.currentTime, .10);
+    const musical = [...(this.effects?.voices || [])].some(v => v.music);
+    this.ambienceBus.gain.setTargetAtTime(this.paused && !this.keepAmbience ? 0 : this.ambienceVolume * (musical ? .65 : 1), this.ctx.currentTime, .10);
     this.effectBus.gain.setTargetAtTime(this.paused ? 0 : this.effectsVolume, this.ctx.currentTime, .04);
   }
   setVolume(kind, value) {
@@ -71,6 +72,9 @@ export class Soundscape {
   spell(kind = 'fire') { this.play(kind); }
   impact(kind = 'fire') { this.play(kind + 'Impact'); }
   collect() { this.play('collect'); }
+  milestone(tier) { this.play(['', 'milestone', 'festival', 'grandFestival'][tier]); }
+  victory() { this.play('victory'); }
+  clearEffects() { this.effects?.stop(); }
   trick() { this.play('trick'); }
   hit() { this.play('hit'); }
   kill() { this.play('kill'); }

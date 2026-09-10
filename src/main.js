@@ -106,6 +106,7 @@ function updateSpellTray() {
   }
 }
 function clearWorld() {
+  sound.clearEffects();
   celebrations.clear();
   $('milestone-banner').hidden = true;
   document.body.classList.remove('milestone-glow', 'milestone-grand');
@@ -235,7 +236,8 @@ function raceStep(input) {
   if (event === 'crash' || event === 'miss') { trailHistory.length = 0; sound.hit(); flashTime = .3; $('damage-flash').style.opacity = '1'; notify(event === 'miss' ? 'Missed gate · back to checkpoint' : 'Clipped it · back to checkpoint', 1.6, 3); }
   if (event === 'gate' || event === 'finish') {
     const g = raceAttempt.course.gates[raceAttempt.nextGate - 1];
-    sound.trick(); magic.checkpoint(g.x, g.y, g.s, g.radius, event === 'finish');
+    if (event === 'finish') sound.victory(); else sound.trick();
+    magic.checkpoint(g.x, g.y, g.s, g.radius, event === 'finish');
     if (event === 'gate') notify(`GATE ${raceAttempt.nextGate} CLEARED · +12 SKYFIRE`, 1.2, 2);
   }
   if (event === 'finish' || event === 'timeout') finishRace();
@@ -529,6 +531,7 @@ function frame(now) {
   const distance = state === 'menu' ? menuDistance : run.distance;
   if (playing && !frozen && !raceAttempt) {
     const milestone = celebrations.observe(run);
+    if (milestone) sound.milestone(milestone.tier);
     if (milestone) $('milestone-banner').textContent = `✦ ${milestone.meters.toLocaleString()} m · ${milestone.tier === 3 ? 'GRAND SKY FESTIVAL!' : milestone.tier === 2 ? 'FESTIVAL OF FLIGHT!' : 'A THOUSAND MORE WONDERS!'} ✦`;
   }
   celebrations.update(playing && !frozen ? worldDt : 0, run);

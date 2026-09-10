@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { RADIUS, CHUNK, ZONES, SPELLS, cliffRailAt, random, paletteAt } from './game.js';
+import { RADIUS, CHUNK, ZONE_LENGTH, ZONES, SPELLS, cliffRailAt, random, paletteAt } from './game.js';
 import { toonMaterial } from './toon.js';
 import { elevationAt, passageAt, passageSolids } from './landscape.js';
 
@@ -344,7 +344,7 @@ export function createChunkVisual(data, seed, arena = false) {
   }
   // Build both layers with the same random sequence. Arena mode never rerolls
   // landmarks, foliage, terrain, roadside towers or lanterns.
-  const palette = paletteAt(data.disablePassages ? data.zone * 1280 : data.start, seed);
+  const palette = paletteAt(data.disablePassages ? data.zone * ZONE_LENGTH : data.start, seed);
   const result = new THREE.Group(), scenery = mergeGroup(g, data.start, palette), hazardVisual = mergeGroup(hazards, data.start, palette);
   hazardVisual.traverse(m => { if (m.isMesh) {
     const source = m.material; m.material = source.clone();

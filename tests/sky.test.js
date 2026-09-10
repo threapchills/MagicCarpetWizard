@@ -19,7 +19,7 @@ test('distant skies have broad cloud banks, two outlined moons and outlined star
   assert.ok(sky.moons.visible && sky.stars.visible && sky.starOutlines.visible);
   assert.equal(sky.sun.visible, false);
   camera.position.set(45, 60, 20); updateSky(sky, 0, { ...options, enclosed: true });
-  assert.equal(sky.root.visible, false); assert.deepEqual(sky.root.position, camera.position);
+  assert.equal(sky.root.visible, true, 'the sky remains visible through tunnel exits'); assert.deepEqual(sky.root.position, camera.position);
   updateSky(sky, 1, { ...options, night: 0, daylight: 1 });
   assert.ok(sky.root.visible && sky.sun.visible); assert.equal(sky.moons.visible, false); assert.equal(sky.stars.visible, false);
 });

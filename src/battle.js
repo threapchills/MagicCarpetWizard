@@ -107,6 +107,7 @@ export class Battle {
     this.ring(e.x, e.y, e.s, '#ff462a', e.boss ? 23 : 7, .55); this.hooks.sound.kill();
     if (e.sigil) { award(run, 80, 6); this.hooks.notify('WARD SIGIL SHATTERED', 1.1, 2); return; }
     if (e.boss) {
+      this.hooks.sound.victory();
       run.bosses++; award(run, 2000, 50); collectSpell(run, 'ward'); collectSpell(run, 'overdrive');
       this.drop(WEAPONS[run.bosses % 3], run.x, run.altitude, run.distance + 25);
       this.drop('fury', run.x, run.altitude, run.distance + 40);
@@ -303,7 +304,7 @@ export class Battle {
       return;
     }
     moveBoss(b, run, dt);
-    if (b.s < run.distance - 85 || b.s > run.distance + 310 || b.age > 35) { this.escapeBoss(run, b.s < run.distance - 85); return; }
+    if (b.s < run.distance - 85 || b.s > run.distance + 310 || b.age > b.maxDuration) { this.escapeBoss(run, b.s < run.distance - 85); return; }
     this.status(b, dt, run); if (!this.boss) return;
     for (const s of b.sigils) {
       if (!s.active) continue;

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { createRun, collectSpell, award, generateChunk, ZONES, paletteAt } from '../src/game.js';
+import { createRun, collectSpell, award, generateChunk, ZONES, ZONE_LENGTH, CHUNK, paletteAt } from '../src/game.js';
 import { toggleFocus, tickFocus, spotAmbush } from '../src/focus.js';
 import { tickBuffs } from '../src/combat.js';
 import { createCourse, createAttempt, stepRace } from '../src/race.js';
@@ -58,12 +58,12 @@ test('surfing rider has bounded animated hair that lengthens with speed and powe
 test('all new biomes render finite geometry, select ambience and produce stable changing palettes', () => {
   assert.equal(ZONES.length,13); const names=new Set();
   for(let zone=7;zone<ZONES.length;zone++) {
-    const c=generateChunk(zone*20+3,42), visual=createChunkVisual(c,42);
+    const c=generateChunk(zone*ZONE_LENGTH/CHUNK+3,42), visual=createChunkVisual(c,42);
     names.add(ZONES[zone].type); visual.traverse(o=>{if(o.isMesh)assert.ok(o.geometry.attributes.position.array.every(Number.isFinite));}); disposeChunk(visual);
     assert.equal(ambientProfile({zone:ZONES[zone].type}).length,3);
   }
   assert.equal(names.size,6); assert.deepEqual(paletteAt(1280,42),paletteAt(1300,42)); assert.notDeepEqual(paletteAt(1280,42),paletteAt(17920,42));
-  const giants=[]; for(let i=160;i<180;i++) giants.push(...generateChunk(i,42).enemies.filter(e=>e.kind==='giant'));
+  const giants=[]; for(let i=8*ZONE_LENGTH/CHUNK;i<9*ZONE_LENGTH/CHUNK;i++) giants.push(...generateChunk(i,42).enemies.filter(e=>e.kind==='giant'));
   assert.ok(giants.length>0); assert.ok(createEnemy('giant').scale.x>=3);
   const props=[]; for(let i=9;i<100;i++) props.push(...generateChunk(i,42).props.filter(p=>p.large));
   assert.ok(props.length>10); assert.ok(props.every(p=>p.radius>6&&p.y>=7&&p.scale>2));

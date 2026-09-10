@@ -10,11 +10,20 @@ test('adventure difficulty rises through 40km and beyond, with bounded speed and
     assert.ok(p >= previous && p <= 1); previous = p;
     assert.ok(b.obstacleChance >= 0 && b.obstacleChance < .9);
     assert.ok(b.enemyChance >= 0 && b.enemyChance < 1);
-    assert.ok(b.attackInterval >= .75 && b.warning >= 1 && b.bossSpacing >= 2000);
+    assert.ok(b.attackInterval >= .57 && b.warning >= .9 && b.bossSpacing >= 1600);
   }
   const early = balanceAt(1000), late = balanceAt(40000), distant = balanceAt(64000);
   assert.ok(late.attackInterval < early.attackInterval * .6);
   assert.ok(distant.strength > late.strength);
+  for (const [s, strength] of [[0, 0], [1000, .04], [1500, .06], [2500, .10]]) {
+    const b = balanceAt(s);
+    assert.ok(Math.abs(b.strength - strength) < 1e-9);
+    assert.equal(b.mastery, 0);
+    assert.equal(b.attackInterval, 1.55 - .8 * strength);
+  }
+  assert.ok(balanceAt(10000).strength > .45);
+  assert.ok(balanceAt(80000).attackInterval < balanceAt(20000).attackInterval * .7);
+  assert.ok(balanceAt(80000).projectileSpeed > balanceAt(20000).projectileSpeed);
   const speed = s => flightSpeed(3.5, false, difficultyAt(s)) * ADVENTURE_TIME_SCALE;
   assert.ok(speed(1000) < flightSpeed(3.5, false) * .85);
   assert.ok(speed(40000) > speed(1000) * 1.25);
