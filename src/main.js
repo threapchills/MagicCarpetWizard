@@ -1,3 +1,5 @@
+import { gauntletAt, gauntletNear, GAUNTLET_NAMES } from './gauntlets.js';
+import { GauntletField } from './gauntlet-field.js';
 import './style.css';
 import './flight.css';
 import * as THREE from 'three';
@@ -95,6 +97,11 @@ for (const side of [-1, 1]) {
 }
 const weatherField = new WeatherField(scene);
 const radar = new ThreatRadar($('threat-radar'));
+const gauntlets = new GauntletField(scene, {
+  warn(name,type) {notify(`${name} · ${type==='axes'?'WEAVE BETWEEN THE SWINGING BLADES':type==='volcano'?'RISING LAVA · WATCH THE BRIGHT VENTS':'FOLLOW THE GLOWING OPENINGS'}`,5,6);sound.roar();},
+  erupt() {sound.impact('fire');},
+  complete() {award(run,1500,35);notify('GAUNTLET SURVIVED · +1,500 · +SKYFIRE',4,6);sound.victory();}
+});
 
 function notify(text, duration = 2.2, priority = 0) { if (toastTime > 0 && priority < notifyPriority) return; notifyPriority = priority; $('toast').textContent = text; $('toast').classList.add('show'); toastTime = duration; }
 function banner(zone) { const z = ZONES[zone]; $('zone-banner').querySelector('strong').textContent = z.name; $('zone-banner').querySelector('em').textContent = z.subtitle; $('zone-banner').classList.add('show'); bannerTime = 4; }
@@ -106,6 +113,7 @@ function updateSpellTray() {
   }
 }
 function clearWorld() {
+  gauntlets.clear();
   sound.clearEffects();
   celebrations.clear();
   $('milestone-banner').hidden = true;
@@ -128,7 +136,7 @@ function ensureChunks(distance, seed) {
   }
   for (let id = Math.max(0, index - 2); id <= index + 8; id++) {
     if (chunks.has(id)) continue;
-    const c = raceAttempt ? raceAttempt.collisionChunks[id] || generateRaceChunk(id, raceAttempt.course) : generateChunk(id, seed); c.combatClear = !!battle.boss; c.arenaBlend = c.combatClear ? 1 : 0; c.visual = createChunkVisual(c, seed, c.combatClear); scene.add(c.visual);
+    const c = raceAttempt ? raceAttempt.collisionChunks[id] || generateRaceChunk(id, raceAttempt.course) : generateChunk(id, seed); c.combatClear = !!battle.boss && !c.gauntlet; c.arenaBlend = c.combatClear ? 1 : 0; c.visual = createChunkVisual(c, seed, c.combatClear); scene.add(c.visual);
     for (const p of c.props || []) { p.visual = createBreakable(p.kind, p.large); p.visual.visible = p.active; scene.add(p.visual); }
     for (const p of c.pickups) { p.visual = createPickup(p.kind); scene.add(p.visual); p.active = true; }
     for (const e of c.enemies) { e.visual = createEnemy(e.kind); scene.add(e.visual); e.active = true; e.baseX = e.x; e.baseY = e.y; e.baseS = e.s; e.radius ||= 2.4; e.maxHp = e.hp; e.cooldown = .85 + (e.spawnDelay || 0); e.frozen = 0; }
@@ -145,6 +153,7 @@ function setArena(active) {
   for (const c of chunks.values()) {
     // Existing geometry stays cleared after the fight. Normal hazards return
     // only in newly streamed chunks, beyond the visible horizon.
+    if(c.gauntlet)continue;
     c.combatClear = true;
     if (!active) for (const e of c.enemies) { e.active = false; e.visual.visible = false; }
   }
@@ -468,17 +477,18 @@ function updateUI(weather) {
   $('power-bar').style.width = `${run.power}%`; $('power-value').textContent = `${Math.floor(run.power)}%`; $('power-hint').textContent = run.boost ? 'Skyfire flowing · keep the chain alive' : run.power >= 25 ? 'Hold SHIFT to ride the skyfire' : 'Skim low to gather power';
   $('speed-value').textContent = Math.round(run.speed * 3.6 * (raceAttempt ? 1 : ADVENTURE_TIME_SCALE)); $('altitude').textContent = `${run.vy > 1 ? '↑ ' : run.vy < -1 ? '↓ ' : ''}${run.altitude.toFixed(1)} m above ground`;
   $('flight-mode').textContent = run.boost ? '✦ SKYFIRE ASCENDANT' : run.railing ? '✦ CLIFF RIDER · +SPEED' : run.altitude < 3.5 ? '✦ GROUND EFFECT' : run.roll ? '✧ SILK SPIRAL' : 'RIDE THE WIND';
-  const zone = zoneAt(run.distance), progress = (run.distance % ZONE_LENGTH) / ZONE_LENGTH;
+  const trap=!raceAttempt&&gauntletAt(run.distance);
+  const zone = zoneAt(run.distance), progress = trap ? (run.distance-trap.start)/(trap.end-trap.start) : (run.distance % ZONE_LENGTH) / ZONE_LENGTH;
   $('zone-progress').style.width = `${progress * 100}%`;
   const balance = balanceAt(run.distance);
-  $('journey-stage').textContent = balance.respite > .6 ? 'CATCH YOUR BREATH' : balance.stage;
-  $('next-zone').textContent = `${Math.ceil(ZONE_LENGTH - run.distance % ZONE_LENGTH)} m to ${ZONES[(zone + 1) % ZONES.length].name}`;
+  $('journey-stage').textContent = trap ? GAUNTLET_NAMES[trap.type] : balance.respite > .6 ? 'CATCH YOUR BREATH' : balance.stage;
+  $('next-zone').textContent = trap ? `${Math.ceil(trap.end-run.distance)} m to daylight · GAUNTLET` : `${Math.ceil(ZONE_LENGTH - run.distance % ZONE_LENGTH)} m to ${ZONES[(zone + 1) % ZONES.length].name}`;
   if (run.trayMagnet !== run.spells.magnet) { run.trayMagnet = run.spells.magnet; updateSpellTray(); }
   $('combat-buffs').textContent = [...(run.spells.magnet ? [`MAGNET ${Math.ceil(run.magnetTime)}s · ${magnetRadius(run.spells.magnet)}m`] : []), ...Object.entries(run.buffs).filter(([, t]) => t > 0).map(([kind, t]) => SPELLS[kind].name.toUpperCase() + ' ' + Math.ceil(t) + 's')].join('  ·  ');
   $('active-spell').textContent = SPELLS[run.weapon].name.toUpperCase() + ' · LV ' + run.spells[run.weapon] + ' · 1 / 2 / 3 OR Q';
   const nextRail = cliffRailAt(run.distance + 140), railPhrase = Math.floor((run.distance + 140) / 2560);
   const passage = activePassage(run.distance + 200);
-  if (passage && !battle.boss && run.passageNotified !== passage.start) { run.passageNotified = passage.start; notify('CLIFF PASSAGE AHEAD · CENTER UP · BELOW 27m', 4, 4); }
+  if (passage && passage.type !== 'gauntlet' && !battle.boss && run.passageNotified !== passage.start) { run.passageNotified = passage.start; notify('CLIFF PASSAGE AHEAD · CENTER UP · BELOW 27m', 4, 4); }
   if (nextRail && !raceAttempt && !battle.boss && run.railNotified !== railPhrase) {
     run.railNotified = railPhrase;
     notify(`CLIFF RAIL AHEAD · ${nextRail.side > 0 ? 'RIGHT' : 'LEFT'} EDGE · SKIM AT 6–46m`, 4, 2);
@@ -518,15 +528,16 @@ function frame(now) {
       else {
         const previous = { x: run.x, altitude: run.altitude, distance: run.distance };
         updateRun(run, input, STEP);
-        const solids = [...chunks.values()].flatMap(chunkSolids);
-        if (resolveSolidMovement(run, previous, solids)) hurt();
+        gauntlets.update(run,true,true);
+        const solids = [...chunks.values()].flatMap(chunkSolids).concat(gauntlets.solids);
+        if (resolveSolidMovement(run, previous, solids) || gauntlets.hits(previous,run)) hurt();
         if (shootHeld) fire();
         updateEntities(STEP, run.distance, true, previousDistance);
       }
       accumulator -= STEP;
     }
     while (run.events.length) { const event = run.events.pop(); notify(event === 'rail' ? 'CLIFF RIDER · +45 · +SKYFIRE' : `Silk spiral · +${90 * multiplier(run)} · +11 skyfire`, 1.2); if (event !== 'rail') sound.trick(); }
-    const nextZone = zoneAt(run.distance); if (!raceAttempt && nextZone !== lastZone) { lastZone = nextZone; if (!battle.boss) banner(lastZone); }
+    const nextZone = zoneAt(run.distance); if (!raceAttempt && nextZone !== lastZone) { lastZone = nextZone; if (!battle.boss&&!gauntletNear(run.distance,360)) banner(lastZone); }
   }
   const distance = state === 'menu' ? menuDistance : run.distance;
   if (playing && !frozen && !raceAttempt) {
@@ -539,6 +550,7 @@ function frame(now) {
   document.body.classList.toggle('milestone-grand', celebrations.active?.tier === 3);
   $('milestone-banner').hidden = !celebrations.active || celebrations.active.age > 5 || !playing;
   ensureChunks(distance, run.seed);
+  gauntlets.update(run,!raceAttempt&&state!=='menu',false);
   // Refresh placement after streaming even if this display frame had no simulation step.
   updateEntities(0, distance, false); updateParticles(worldDt, distance); updateCarpet(worldDt, playing); updateTrails(worldDt, distance, playing); updateCamera(frozen ? 0 : dt);
   raceView.update(raceAttempt); updateRaceUI();

@@ -1,3 +1,5 @@
+import { createMagmaStrip } from './magma.js';
+import { SHAPES, obstacleParts } from './obstacle-shapes.js';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RADIUS, CHUNK, ZONE_LENGTH, ZONES, SPELLS, cliffRailAt, random, paletteAt } from './game.js';
@@ -16,6 +18,18 @@ export function mat(color, glow = false, surface = 'plaster') {
   return materials.get(key);
 }
 const box = new THREE.BoxGeometry(1, 1, 1);
+export function shapeGeometry(kind) {
+  const {vertices,faces}=SHAPES[kind], points=[];
+  const center=vertices.reduce((sum,v)=>sum.map((n,i)=>n+v[i]/vertices.length),[0,0,0]);
+  for(const face of faces) for(let i=1;i<face.length-1;i++) {
+    const tri=[face[0],face[i],face[i+1]].map(j=>new THREE.Vector3(vertices[j][0],vertices[j][1]-.5,-vertices[j][2]));
+    const n=tri[1].clone().sub(tri[0]).cross(tri[2].clone().sub(tri[0]));
+    if(n.dot(tri[0].clone().sub(new THREE.Vector3(center[0],center[1]-.5,-center[2])))<0)[tri[1],tri[2]]=[tri[2],tri[1]];
+    for(const p of tri)points.push(p.x,p.y,p.z);
+  }
+  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(points,3));const uv=[];for(let i=0;i<points.length;i+=3)uv.push(points[i]+.5,points[i+1]+.5);g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));g.computeVertexNormals();return g;
+}
+const shapedGeometry=Object.fromEntries(Object.keys(SHAPES).map(kind=>[kind,shapeGeometry(kind)]));
 // Long tunnel faces follow the sphere and elevation terraces rather than
 // stretching a single flat quad below their collision surface.
 const tunnelBox = new THREE.BoxGeometry(1, 1, 1, 4, 1, 16);
@@ -299,11 +313,13 @@ export function createChunkVisual(data, seed, arena = false) {
     for (const side of [-1, 1]) block(g, '#c39e7c', e.x + side * 2.6, base + h + .7, z, 1, 1.4, 6);
     windowOn(g, e.x, base + h * .65, z + 3.04, 1.4, 3);
   }
-  for (const o of data.obstacles) {
+  for (const original of data.obstacles) for (const o of obstacleParts(original)) {
     const body = new THREE.Group(); body.position.set(o.x, -o.x * o.x / (2 * RADIUS), -(o.s - data.start)); body.rotation.y = o.angle || 0; hazards.add(body);
     const reach = Math.hypot(o.width, o.depth) / 2;
     const footing = .5 + (Math.abs(o.x) * reach + reach * reach / 2) / RADIUS;
-    block(body, '#b28a6a', 0, -footing / 2, 0, o.width, footing + .15, o.depth);
+    body.position.y += o.bottom || 0;
+    if(o.shape) { mesh(shapedGeometry[o.shape], o.shape==='pillar'?'#e3ba88':o.shape==='wedge'?'#b58a74':'#a797b3',body,[0,o.height/2,0],[o.width,o.height,o.depth]); continue; }
+    if(!(o.bottom>0)) block(body, '#b28a6a', 0, -footing / 2, 0, o.width, footing + .15, o.depth);
     if (type === 'city' || type === 'palace' || type === 'farm') {
       block(body, rng() > .5 ? '#e8b380' : '#edc89b', 0, o.height / 2, 0, o.width, o.height, o.depth);
       block(body, '#f6d9a6', 0, o.height - .18, 0, o.width + .2, .35, o.depth + .2);
@@ -319,6 +335,9 @@ export function createChunkVisual(data, seed, arena = false) {
       block(body, type === 'canyon' ? '#b97d68' : '#c79876', 0, o.height / 2, 0, o.width, o.height, o.depth);
       block(body, '#d6aa84', 0, o.height - .3, 0, o.width + .1, .6, o.depth + .1);
     }
+  }
+  if(data.gauntlet?.type==='volcano') {
+    for(const side of [-1,1])mesh(groundBox,'#45323f',g,[side*23,1.5,-32],[10,3,64.1]);
   }
   const passage = !data.disablePassages && passageAt(data.start);
   if (passage) {
@@ -352,6 +371,7 @@ export function createChunkVisual(data, seed, arena = false) {
     m.material.transparent = true; m.material.userData.chunkOwned = true;
   } });
   hazardVisual.visible = !arena; result.add(scenery, hazardVisual);
+  if(data.gauntlet?.type==='volcano')scenery.add(createMagmaStrip(data.start,RADIUS));
   result.userData.scenery = scenery; result.userData.hazards = hazardVisual;
   return result;
 }

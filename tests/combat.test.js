@@ -173,3 +173,11 @@ test('breakable scenery is a spell target, clears without enemy loot, and is reg
   assert.equal(p.active, false); assert.equal(h.battle.targets().length, 0); assert.equal(h.run.kills, 0); assert.equal(h.battle.drops.length, 0);
   assert.ok(generateChunk(4, 42).props.every(p => p.active));
 });
+
+test('cave gauntlets defer bosses and end an approaching fight before the entrance', () => {
+  const h=harness();h.run.distance=24990;h.battle.startBoss(h.run);assert.ok(h.battle.boss);
+  h.run.distance=25000;h.battle.updateBoss(.01,h.run);assert.equal(h.battle.boss,null);
+  assert.ok(h.battle.nextBoss>=27524);
+  h.run.distance=26000;h.battle.updateBoss(.01,h.run);assert.equal(h.battle.boss,null);
+  h.battle.clear();
+});

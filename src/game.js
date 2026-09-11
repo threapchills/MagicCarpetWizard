@@ -1,3 +1,4 @@
+import { gauntletAt, gauntletNear } from './gauntlets.js';
 import { spawnEnemies } from './foes.js';
 import { breakables, passageAt } from './landscape.js';
 import { balanceAt } from './pacing.js';
@@ -113,6 +114,12 @@ export function generateChunk(index, seed) {
       obstacles.push({ x: lane * LANE_SPACING + (rng() - .5) * 3, s: start + 42 + (rng() - .5) * 8, width: 8 + rng() * 6, height: 9 + rng() * (balance.obstacleHeight + (type === 'canyon' ? 4 : 0)), depth: 8 + rng() * 7, angle: (rng() - .5) * 1.4, type });
     }
   }
+  const shapeRandom=random(seed+index*3571+801);
+  for(const o of obstacles) if(index>8&&shapeRandom()<.78) {
+    const shapes=['pillar','pyramid','wedge','arch']; o.shape=shapes[Math.floor(shapeRandom()*shapes.length)];
+    if(o.shape==='arch') {o.width=18;o.height=Math.max(20,o.height);o.angle*=.3;}
+    o.bottom=-.8;o.height+=.8;
+  }
   const laneX = safeLane * LANE_SPACING;
   const previousX = safeLaneAt(index - 1, seed) * LANE_SPACING;
   for (let i = 0; i < 8; i++) {
@@ -130,7 +137,11 @@ export function generateChunk(index, seed) {
   if (passageAt(start)) { obstacles.length = 0; enemies.length = 0; rings.length = 0; for (const p of pickups) { p.x *= .45; p.y = Math.min(p.y, 20); } }
   if (index % 4 === 2) rings.push({ x: laneX, s: start + 15, y: 10 + rng() * 13, radius: 5.2 });
   const props = breakables(type, index, start, random(seed + index * 967 + 91)).filter(p => (!passageAt(start) || Math.abs(p.x) + p.radius < 26 && p.y + p.radius < 27) && !obstacles.some(o => Math.abs(p.x - o.x) < 13 && Math.abs(p.s - o.s) < 15) && (p.large ? Math.abs(p.x - laneX) > 10 : Math.abs(p.x - laneX) > 7));
-  return { index, start, zone, safeLane, obstacles, pickups, enemies, rings, props };
+  if(gauntletNear(start,600))enemies.length=0;
+  if(gauntletNear(start,192))obstacles.length=0;
+  const gauntlet=gauntletAt(start);
+  if(gauntlet) { obstacles.length=enemies.length=rings.length=props.length=0; for(const p of pickups){p.x=Math.sin((start-gauntlet.start)/160)*12;p.y=16;} }
+  return { index, start, zone, safeLane, obstacles, pickups, enemies, rings, props, gauntlet };
 }
 export function obstacleExtents(obstacle) {
   const c = Math.abs(Math.cos(obstacle.angle || 0)), s = Math.abs(Math.sin(obstacle.angle || 0));

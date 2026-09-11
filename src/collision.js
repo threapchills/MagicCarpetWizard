@@ -1,5 +1,6 @@
 import { RADIUS } from './game.js';
 import { passageSolids } from './landscape.js';
+import { obstacleParts, hullPlanes } from './obstacle-shapes.js';
 
 // A forgiving carpet footprint with clearance for the rider's head. Damage
 // immunity never changes this physical hull.
@@ -12,7 +13,7 @@ const dot = (a, b) => a.x * b.x + a.y * b.y + a.s * b.s;
 export function chunkSolids(chunk) {
   const solids = chunk.disablePassages ? [] : passageSolids(chunk.start).filter(o => !o.hazard || !chunk.combatClear);
   if (!chunk.combatClear) {
-    solids.push(...chunk.obstacles);
+    solids.push(...chunk.obstacles.flatMap(obstacleParts));
     for (const p of chunk.props || []) if (p.active) solids.push({ x: p.x, s: p.s, bottom: p.y - p.radius, width: p.radius * 2, depth: p.radius * 2, height: p.radius * 2 });
   }
   return solids;
@@ -21,6 +22,7 @@ export function chunkSolids(chunk) {
 // Sweep the entire movement segment against an oriented box expanded by the
 // carpet hull. Work before spherical rendering, in the same terrain space.
 function sweep(from, to, box) {
+  if (box.shape) return sweepHull(from, to, box);
   const a = box.angle || 0, c = Math.cos(a), s = Math.sin(a);
   const local = p => ({ x: c * (p.x - box.x) + s * (p.s - box.s), y: p.y, s: -s * (p.x - box.x) + c * (p.s - box.s) });
   const p = local(from), q = local(to), d = { x: q.x - p.x, y: q.y - p.y, s: q.s - p.s };
@@ -49,6 +51,33 @@ function sweep(from, to, box) {
   }
   if (enter < -1e-9 || enter > 1 || exit < 0 || !n) return null;
   return { t: Math.max(0, enter), normal: n, depth: 0 };
+}
+
+const hullCache = new Map();
+function sweepHull(from, to, box) {
+  // Keep the cache bounded: static obstacles have many seeded dimensions.
+  const key = [box.shape,box.width,box.height,box.depth].join(':');
+  let planes=hullCache.get(key);
+  if(!planes) { planes=hullPlanes(box.shape,box.width,box.height,box.depth); if(!planes) return sweep(from,to,{...box,shape:null}); if(hullCache.size>256)hullCache.clear(); hullCache.set(key,planes); }
+  const c=Math.cos(box.angle||0),s=Math.sin(box.angle||0),cr=Math.cos(box.roll||0),sr=Math.sin(box.roll||0);
+  const center={x:box.x,y:(box.bottom||0)+box.height/2-(box.flatBase?0:box.x*box.x/(2*RADIUS)),s:box.s};
+  let enter=-Infinity,exit=Infinity,normal,inside=true,depth=Infinity,recover;
+  for(const plane of planes) {
+    const nx=cr*plane.x-sr*plane.y,ny=sr*plane.x+cr*plane.y;
+    const n={x:c*nx-s*plane.s,y:ny,s:s*nx+c*plane.s};
+    const bound=plane.d+Math.abs(n.x)*HULL.x+Math.abs(n.s)*HULL.s+Math.abs(n.y)*(n.y>0?HULL.bottom:HULL.top);
+    const p=dot(n,{x:from.x-center.x,y:from.y-center.y,s:from.s-center.s})-bound;
+    const q=dot(n,{x:to.x-center.x,y:to.y-center.y,s:to.s-center.s})-bound, delta=q-p;
+    if(p>=0)inside=false;
+    if(-p<depth) {depth=-p;recover=n;}
+    if(Math.abs(delta)<1e-10) {if(p>=0)return null;continue;}
+    const t=-p/delta;
+    if(delta<0) {if(t>enter){enter=t;normal=n;}} else exit=Math.min(exit,t);
+    if(enter>exit)return null;
+  }
+  if(inside)return {t:0,normal:recover,depth};
+  if(enter< -1e-9||enter>1||exit<0||!normal)return null;
+  return {t:Math.max(0,enter),normal,depth:0};
 }
 
 export function movementHitsSolid(previous, run, solids) {

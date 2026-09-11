@@ -1,3 +1,4 @@
+import { gauntletAt, gauntletNear } from './gauntlets.js';
 export const PROP_TYPES = { city: 'crate', palace: 'urn', desert: 'rock', canyon: 'rock', river: 'timber', farm: 'hay', ancient: 'seal', fishing: 'timber', mountain: 'rock', jungle: 'timber', beach: 'crate', island: 'urn', temple: 'seal' };
 export function elevationAt(s) {
   // Broad, smooth terraces start after the opening stretch; no steps at chunk seams.
@@ -5,8 +6,12 @@ export function elevationAt(s) {
   return 11 * (1 - Math.cos(t / 270)) + 4 * (1 - Math.cos(t / 113));
 }
 export function passageAt(s) {
+  const trap=gauntletAt(s);
+  if(trap) return {...trap,halfWidth:29,ceiling:32,type:'gauntlet'};
   const phrase = Math.floor(s / 1792), local = s - phrase * 1792;
   if (local < 768 || local >= 1088) return null;
+  const start=phrase*1792+768;
+  if(gauntletNear(start,384)||gauntletNear(start+320,384))return null;
   return { start: phrase * 1792 + 768, end: phrase * 1792 + 1088, halfWidth: 29, ceiling: 32, type: phrase % 2 ? 'cave' : 'cliff tunnel' };
 }
 // Shared by the renderer and physics, including the lowered rock shoulders and

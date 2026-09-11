@@ -1,3 +1,4 @@
+import { gauntletNear } from './gauntlets.js';
 import * as THREE from 'three';
 import { RADIUS, SPELLS, clamp, lerp, award, multiplier, collectSpell, segmentHitsSphere } from './game.js';
 import { WEAPONS, weaponProfile, tickBuffs, damageFor, makeBoss, moveBoss, bossPhase, attackTargets } from './combat.js';
@@ -237,6 +238,7 @@ export class Battle {
     return false;
   }
   updateEnemy(e, dt, distance, run, playing, time) {
+    if(gauntletNear(distance,600)) {e.visual.visible=false;return;}
     if (!e.active) return;
     e.visual.visible = !this.boss && e.s - distance < 230 && e.s - distance > -75;
     if (!e.visual.visible) return;
@@ -297,6 +299,8 @@ export class Battle {
     this.hooks.arena(false); this.hooks.bossUI(null);
   }
   updateBoss(dt, run) {
+    const gauntlet=gauntletNear(run.distance,600);
+    if(gauntlet) {if(this.boss)this.escapeBoss(run,false);for(const e of this.roamers)this.scene.remove(e.visual);this.roamers.length=0;for(const p of this.shots)this.scene.remove(p.visual);this.shots.length=0;this.nextBoss=Math.max(this.nextBoss,gauntlet.end+900);return;}
     const b = this.boss;
     if (!b) {
       if (run.distance > this.nextBoss - 180 && !this.warning) { this.warning = true; this.hooks.notify('SOMETHING ENORMOUS IS HUNTING YOU…', 3, 4); this.hooks.sound.roar(); }
